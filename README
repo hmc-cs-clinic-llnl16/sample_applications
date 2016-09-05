@@ -1,1 +1,10 @@
-testtesttest
+This just uses CMake. Just do the following:
+
+mkdir build
+cd build
+cmake ..
+make
+cd matrix_multiplication
+./mmult.exe
+
+Right now it doesn't output anything if it works correctly, and it only does sequential execution.
