@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.1)
 
 project(RajaExamples CXX C)
 set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_BUILD_TYPE Debug)
+#SET(RAJA_DIR "/mnt/clinic/2016/llnl16/test/RAJA/raja-build/include")
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
