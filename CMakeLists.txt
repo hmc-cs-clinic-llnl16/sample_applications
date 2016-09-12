@@ -57,4 +57,5 @@ if(RAJA_ENABLE_CUDA)
 endif()
 
 add_subdirectory(matrix_multiplication)
+add_subdirectory(fft)
 
