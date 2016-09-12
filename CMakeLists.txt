@@ -56,5 +56,27 @@ if(RAJA_ENABLE_CUDA)
   endif()
 endif()
 
+ExternalProject_Add(
+  caliper
+  GIT_REPOSITORY https://github.com/LLNL/Caliper.git
+  GIT_TAG master
+  CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+    -DCMAKE_BUILD_TYPE=Release
+    -DRAJA_ENABLE_NESTED=On
+    -DRAJA_ENABLE_TESTS=Off
+    -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/tpl
+  BUILD_COMMAND make
+  BUILD_IN_SOURCE 0
+  INSTALL_DIR ${CMAKE_BINARY_DIR}/tpl
+  INSTALL_COMMAND make install
+  LOG_DOWNLOAD ON
+  LOG_CONFIGURE ON
+  LOG_BUILD ON)
+
+ExternalProject_Get_Property(caliper install_dir)
+set(CALIPER_DIR ${install_dir})
+set(CALIPER_LIBRARIES ${CALIPER_DIR}/lib/libcaliper.so)
+
 add_subdirectory(matrix_multiplication)
 

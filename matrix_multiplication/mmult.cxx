@@ -13,6 +13,10 @@
 
 #include "RAJA/RAJA.hxx"
 
+#if defined(USE_CALIPER)
+#   include <Annotation.h>
+#endif
+
 template <typename T, typename Policy>
 class Matrix {
   RAJA::Index_type rows_;
@@ -97,17 +101,17 @@ std::vector<T> mult(const std::vector<T>& lhs, const std::vector<T>& rhs, const 
 }
 
 template <typename MATRIX>
-void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials, double* timeElapsed) {
-    *timeElapsed = std::numeric_limits<double>::max();
-    for (std::size_t i = 0; i < numTrials; ++i) {
-      auto tic = std::chrono::high_resolution_clock::now();
+void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
+    cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
+    auto iteration = cali::Annotation("iteration");
+    for (std::size_t i = 0; i < numTrials; ++i) {  
+      std::ostringstream os;
+      iteration.set(i);
       auto actualResult = left * right;
-      auto toc = std::chrono::high_resolution_clock::now();
-      auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(toc - tic).count();
-      std::cout << "Completed iteration " << i + 1 << " of " << numTrials << " for variant " << MATRIX::name << " in " << elapsed << " seconds\n";
+      iteration.set("test" + std::string(i));
       checkResult(actualResult, result);
-      *timeElapsed = std::min(elapsed, *timeElapsed);
     }
+    iteration.end();
 }
 
 template <typename MATRIX>
@@ -132,6 +136,7 @@ int main(int argc, char** argv) {
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> dist(0, 5);
 
+  auto init = cali::Annotation("initialization").begin();
   auto matrix1 = Matrix<double, SerialPolicy>(NUM_ROWS, NUM_COLS);
   auto matrix2 = Matrix<double, SerialPolicy>(NUM_ROWS, NUM_COLS);
   auto matrix3 = Matrix<double, OmpPolicy>(NUM_ROWS, NUM_COLS);
@@ -151,30 +156,27 @@ int main(int argc, char** argv) {
       control2[i * NUM_COLS + j] = second;
     }
   }
+  init.end();
 
-  double bestTime = 0;
+  auto control = cali::Annotation("control").begin();
   auto resultV = mult(control1, control2, NUM_ROWS, NUM_COLS);
+  control.end();
   try {
-    runTimingText(matrix1, matrix2, resultV, NUM_TRIALS, &bestTime);
+    runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);
   } catch (std::runtime_error e) {
     std::cout << e.what() << std::endl;
     return 1;
   }
 
-  std::cout << "Completed matrix multiplication serial style without error.\n"  
-            << NUM_ROWS << " rows and " << NUM_COLS << " columns with a best time of " 
-            << bestTime << " seconds." << std::endl;
+  std::cout << "Completed matrix multiplication serial style without error.\n";
 
-  bestTime = 0;
   try {
-    runTimingText(matrix3, matrix4, resultV, NUM_TRIALS, &bestTime);
+    runTimingText(matrix3, matrix4, resultV, NUM_TRIALS);
   } catch (std::runtime_error e) {
     std::cout << e.what() << std::endl;
     return 1;
   }
 
-  std::cout << "Completed matrix multiplication omp style without error.\n"  
-            << NUM_ROWS << " rows and " << NUM_COLS << " columns with a best time of " 
-            << bestTime << " seconds." << std::endl;
+  std::cout << "Completed matrix multiplication omp style without error." << std::endl;
 }
 
