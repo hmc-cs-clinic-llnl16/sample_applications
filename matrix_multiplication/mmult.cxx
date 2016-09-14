@@ -13,9 +13,7 @@
 
 #include "RAJA/RAJA.hxx"
 
-#if defined(USE_CALIPER)
-#   include <Annotation.h>
-#endif
+#include "caliper/Annotation.h"
 
 template <typename T, typename Policy>
 class Matrix {
@@ -104,11 +102,11 @@ template <typename MATRIX>
 void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
     cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
     auto iteration = cali::Annotation("iteration");
-    for (std::size_t i = 0; i < numTrials; ++i) {  
-      std::ostringstream os;
+    for (RAJA::Index_type i = 0; i < numTrials; ++i) {  
+      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "... "; 
       iteration.set(i);
       auto actualResult = left * right;
-      iteration.set("test" + std::string(i));
+      iteration.set("test");
       checkResult(actualResult, result);
     }
     iteration.end();

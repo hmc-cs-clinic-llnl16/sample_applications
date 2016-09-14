@@ -1,3 +1,3 @@
 add_executable(mmult.exe mmult.cxx)
-
-target_link_libraries(mmult.exe ${RT_LIBRARIES} ${CALIPER_LIBRARIES})
+add_dependencies(mmult.exe RAJA CALIPER)
+target_link_libraries(mmult.exe RAJA CALIPER ${RT_LIBRARIES})
