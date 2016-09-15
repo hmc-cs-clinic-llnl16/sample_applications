@@ -9,13 +9,12 @@ int main()
 {
     using namespace agency;
     // allocate data in GPU memory
-    using vector = std::vector<int, cuda_managed_allocator<int>>;
+    using vector = std::vector<int, cuda::managed_allocator<int>>;
     using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
     size_t n = 1 << 20;
     matrix a(n, vector(n, 1));
     matrix b(n, vector(n, 1));
     matrix c(n, vector(n, 0));
-    matrix ref(n, vector(n, n));
     vector* a_ptr = a.data();
     vector* b_ptr = b.data();
     vector* c_ptr = c.data();
@@ -26,12 +25,14 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] + y_ptr[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] + b_ptr[k].data()[col];
         }
     });
-    assert(c == reference);
-    for (auto iterator = c.begin(); iterator < c.end(); ++iterator) {
-        std::fill(iterator -> begin(), iterator -> end(), 0);
+    for (auto i = c.begin(); i < c.end(); ++i) {
+        for (auto j = i -> begin(); j < i -> end(); ++j) {
+            assert(*j == n);
+            *j = 0;
+        };
     }
     /*// execute in parallel on the CPU
     bulk_invoke(par(n), [=](parallel_agent& self)
