@@ -103,7 +103,7 @@ void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& resul
     cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
     auto iteration = cali::Annotation("iteration");
     for (RAJA::Index_type i = 0; i < numTrials; ++i) {  
-      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "... "; 
+      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "\n"; 
       iteration.set(i);
       auto actualResult = left * right;
       iteration.set("test");
@@ -126,55 +126,64 @@ void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
 }
 
 int main(int argc, char** argv) {
-  constexpr static RAJA::Index_type NUM_ROWS = 1000;
-  constexpr static RAJA::Index_type NUM_COLS = 1000;
+  constexpr static std::array<RAJA::Index_type, 7> NUM_ROWS = {2<<8, 2<<9, 2<<10, 2<<11, 2<<12, 2<<13, 2<<14};
+  constexpr static std::array<RAJA::Index_type, 7> NUM_COLS = NUM_ROWS;
   constexpr static std::size_t NUM_TRIALS = 10;
 
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<double> dist(0, 5);
 
-  auto init = cali::Annotation("initialization").begin();
-  auto matrix1 = Matrix<double, SerialPolicy>(NUM_ROWS, NUM_COLS);
-  auto matrix2 = Matrix<double, SerialPolicy>(NUM_ROWS, NUM_COLS);
-  auto matrix3 = Matrix<double, OmpPolicy>(NUM_ROWS, NUM_COLS);
-  auto matrix4 = Matrix<double, OmpPolicy>(NUM_ROWS, NUM_COLS);
+  auto size = cali::Annotation("size");
+  for (int sizeIndex = 0; sizeIndex < NUM_ROWS.size(); ++sizeIndex) {
+    auto rows = NUM_ROWS[sizeIndex];
+    auto cols = NUM_COLS[sizeIndex];
+    size.set(rows);
+    std::cout << "Starting size " << rows << "\n";
 
-  auto control1 = std::vector<double>(NUM_ROWS * NUM_COLS);
-  auto control2 = std::vector<double>(NUM_ROWS * NUM_COLS);
+    auto init = cali::Annotation("initialization").begin();
+    auto matrix1 = Matrix<double, SerialPolicy>(rows, cols);
+    auto matrix2 = Matrix<double, SerialPolicy>(rows, cols);
+    auto matrix3 = Matrix<double, OmpPolicy>(rows, cols);
+    auto matrix4 = Matrix<double, OmpPolicy>(rows, cols);
 
-  for (std::size_t i = 0; i < NUM_ROWS; ++i) {
-    for (std::size_t j = 0; j < NUM_COLS; ++j) {
-      double first = dist(gen), second = dist(gen);
-      matrix1(i, j) = first;
-      matrix3(i, j) = first;
-      control1[i * NUM_COLS + j] = first;
-      matrix2(i, j) = second;
-      matrix4(i, j) = second;
-      control2[i * NUM_COLS + j] = second;
+    auto control1 = std::vector<double>(rows * cols);
+    auto control2 = std::vector<double>(rows * cols);
+
+    for (std::size_t i = 0; i < rows; ++i) {
+      for (std::size_t j = 0; j < cols; ++j) {
+        double first = dist(gen), second = dist(gen);
+        matrix1(i, j) = first;
+        matrix3(i, j) = first;
+        control1[i * cols + j] = first;
+        matrix2(i, j) = second;
+        matrix4(i, j) = second;
+        control2[i * cols + j] = second;
+      }
     }
+    init.end();
+
+    auto control = cali::Annotation("control").begin();
+    auto resultV = mult(control1, control2, rows, cols);
+    control.end();
+    try {
+      runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);
+    } catch (std::runtime_error e) {
+      std::cout << e.what() << std::endl;
+      return 1;
+    }
+
+    std::cout << "Completed matrix multiplication serial style without error.\n";
+
+    try {
+      runTimingText(matrix3, matrix4, resultV, NUM_TRIALS);
+    } catch (std::runtime_error e) {
+      std::cout << e.what() << std::endl;
+      return 1;
+    }
+
+    std::cout << "Completed matrix multiplication omp style without error." << std::endl;
   }
-  init.end();
-
-  auto control = cali::Annotation("control").begin();
-  auto resultV = mult(control1, control2, NUM_ROWS, NUM_COLS);
-  control.end();
-  try {
-    runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);
-  } catch (std::runtime_error e) {
-    std::cout << e.what() << std::endl;
-    return 1;
-  }
-
-  std::cout << "Completed matrix multiplication serial style without error.\n";
-
-  try {
-    runTimingText(matrix3, matrix4, resultV, NUM_TRIALS);
-  } catch (std::runtime_error e) {
-    std::cout << e.what() << std::endl;
-    return 1;
-  }
-
-  std::cout << "Completed matrix multiplication omp style without error." << std::endl;
+  size.end();
 }
 
