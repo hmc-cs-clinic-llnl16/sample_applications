@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.1)
+
+set(
+        CUDA_TOOLKIT_ROOT_DIR
+        /clinic/2016/llnl16/test/cuda)
+
 find_package(CUDA QUIET REQUIRED)
 
 # Pass options to NVCC
