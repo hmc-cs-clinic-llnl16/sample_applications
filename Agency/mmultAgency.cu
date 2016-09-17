@@ -4,22 +4,12 @@
 #include <cassert>
 #include <iostream>
 
-using namespace agency;
-// allocate data in GPU memory
-using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
-using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
-
-void verifyAndCleanMatrix(size_t n, matrix* c_ptr) {
-    for (auto i = c_ptr->begin(); i < c_ptr->end(); ++i) {
-        for (auto j = i -> begin(); j < i -> end(); ++j) {
-            assert(*j == n);
-            *j = 0;
-        };
-    }
-}
-
 int main()
 {
+    using namespace agency;
+    // allocate data in GPU memory
+    using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
+    using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
     size_t n = 1 << 8;
     matrix a(n, vector(n, 1));
     matrix b(n, vector(n, 1));
@@ -32,10 +22,15 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c.data()[row].data()[col] += a.data()[row].data()[k] * b.data()[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] * b_ptr[k].data()[col];
         }
     });
-    verifyAndCleanMatrix(n, &c);
+    for (auto i = c.begin(); i < c.end(); ++i) {
+        for (auto j = i -> begin(); j < i -> end(); ++j) {
+            assert(*j == n);
+            *j = 0;
+        };
+    }
 
     // execute in parallel on the CPU
     bulk_invoke(par(n*n), [=](parallel_agent& self)
@@ -44,12 +39,18 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c.data()[row].data()[col] += a.data()[row].data()[k] * b.data()[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] * b_ptr[k].data()[col];
         }
     });
-    verifyAndCleanMatrix(n, &c);
+    for (auto i = c.begin(); i < c.end(); ++i) {
+        for (auto j = i -> begin(); j < i -> end(); ++j) {
+            assert(*j == n);
+            *j = 0;
+        };
+    }
 
-    /*// execute in parallel on a GPU
+    /*
+    // execute in parallel on a GPU
     cuda::grid_executor gpu;
     bulk_invoke(par(n).on(gpu), [=] __device__ (parallel_agent& self)
     {
@@ -58,6 +59,7 @@ int main()
     });
     assert(z == reference);
     std::fill(z.begin(), z.end(), 0);
+    /*
     // execute in parallel on all GPUs in the system
     cuda::multidevice_executor all_gpus;
     bulk_invoke(par(n).on(all_gpus), [=] __device__ (parallel_agent& self)
