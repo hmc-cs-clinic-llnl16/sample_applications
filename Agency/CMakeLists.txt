@@ -12,7 +12,8 @@ set(
         ${CUDA_NVCC_FLAGS};
         -O3;
         -arch=sm_20;
-        -std=c++11
+        -std=c++11;
+        --expt-extended-lambda
 )
 
 # Specify include directories
