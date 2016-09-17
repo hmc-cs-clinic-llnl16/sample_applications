@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <iostream>
+#include <ctime>
 
 int main()
 {
@@ -22,6 +23,7 @@ int main()
     vector* c_ptr = c.data();
     
     // execute sequentially in the current thread
+    clock_t begin_time = clock();
     bulk_invoke(seq(n*n), [=](sequenced_agent& self)
     {
         int row = self.index() / n;
@@ -32,6 +34,7 @@ int main()
                                       b_ptr[k].data()[col];
         }
     });
+    clock_t difference = clock - begin_time();
 
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
@@ -40,7 +43,10 @@ int main()
         };
     }
 
+    printf("Sequential Execution took %d clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+
     // execute in parallel on the CPU
+    begin_time = clock();
     bulk_invoke(par(n*n), [=](parallel_agent& self)
     {
         int row = self.index() / n;
@@ -51,6 +57,7 @@ int main()
                                       b_ptr[k].data()[col];
         }
     });
+    difference = clock - begin_time();
 
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
@@ -58,6 +65,8 @@ int main()
             *j = 0;
         };
     }
+
+    printf("Parallel CPU Execution took %d clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
     /*
     // execute in parallel on a GPU
