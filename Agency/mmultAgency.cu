@@ -12,7 +12,7 @@ int main()
     using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
     using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
     
-    size_t n = 1 << 8;
+    size_t n = 1 << 10;
     
     matrix a(n, vector(n, 1));
     matrix b(n, vector(n, 1));
@@ -34,7 +34,7 @@ int main()
                                       b_ptr[k].data()[col];
         }
     });
-    clock_t difference = clock - begin_time();
+    clock_t difference = clock() - begin_time;
 
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
@@ -43,7 +43,7 @@ int main()
         };
     }
 
-    printf("Sequential Execution took %d clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+    printf("Sequential Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
     // execute in parallel on the CPU
     begin_time = clock();
@@ -57,7 +57,7 @@ int main()
                                       b_ptr[k].data()[col];
         }
     });
-    difference = clock - begin_time();
+    difference = clock() - begin_time;
 
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
@@ -66,7 +66,7 @@ int main()
         };
     }
 
-    printf("Parallel CPU Execution took %d clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+    printf("Parallel CPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
     /*
     // execute in parallel on a GPU
