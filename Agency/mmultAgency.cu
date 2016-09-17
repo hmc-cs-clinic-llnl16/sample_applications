@@ -10,11 +10,17 @@ int main()
     // allocate data in GPU memory
     using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
     using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
+    
     size_t n = 1 << 8;
+    
     matrix a(n, vector(n, 1));
     matrix b(n, vector(n, 1));
     matrix c(n, vector(n, 0));
-
+    
+    vector* a_ptr = a.data();
+    vector* b_ptr = b.data();
+    vector* c_ptr = c.data();
+    
     // execute sequentially in the current thread
     bulk_invoke(seq(n*n), [=](sequenced_agent& self)
     {
@@ -22,9 +28,11 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] * b_ptr[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] * 
+                                      b_ptr[k].data()[col];
         }
     });
+
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
             assert(*j == n);
@@ -39,9 +47,11 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] * b_ptr[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] * 
+                                      b_ptr[k].data()[col];
         }
     });
+
     for (auto i = c.begin(); i < c.end(); ++i) {
         for (auto j = i -> begin(); j < i -> end(); ++j) {
             assert(*j == n);
