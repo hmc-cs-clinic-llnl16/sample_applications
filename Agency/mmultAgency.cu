@@ -9,9 +9,9 @@ int main()
 {
     using namespace agency;
     // allocate data in GPU memory
-    using vector = std::vector<int, cuda::managed_allocator<int>>;
+    using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
     using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
-    size_t n = 1 << 20;
+    size_t n = 1 << 8;
     matrix a(n, vector(n, 1));
     matrix b(n, vector(n, 1));
     matrix c(n, vector(n, 0));
@@ -25,7 +25,7 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] + b_ptr[k].data()[col];
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] * b_ptr[k].data()[col];
         }
     });
     for (auto i = c.begin(); i < c.end(); ++i) {
