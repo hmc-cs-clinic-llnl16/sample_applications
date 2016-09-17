@@ -68,26 +68,54 @@ int main()
 
     printf("Parallel CPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
-    /*
     // execute in parallel on a GPU
+    begin_time = clock();
     cuda::grid_executor gpu;
-    bulk_invoke(par(n).on(gpu), [=] __device__ (parallel_agent& self)
+    bulk_invoke(par(n*n).on(gpu), [=] __device__ (parallel_agent& self)
     {
-        int i = self.index();
-        z_ptr[i] = a * x_ptr[i] + y_ptr[i];
+        int row = self.index() / n;
+        int col = self.index() % n;
+
+        for (int k = 0; k < n; ++k) {
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] *
+                                      b_ptr[k].data()[col];
+        }
     });
-    assert(z == reference);
-    std::fill(z.begin(), z.end(), 0);
-    /*
+    difference = clock() - begin_time;
+
+    for (auto i = c.begin(); i < c.end(); ++i) {
+        for (auto j = i -> begin(); j < i -> end(); ++j) {
+            assert(*j == n);
+            *j = 0;
+        };
+    }
+
+    printf("Parallel Single GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+
     // execute in parallel on all GPUs in the system
+    begin_time = clock();
     cuda::multidevice_executor all_gpus;
     bulk_invoke(par(n).on(all_gpus), [=] __device__ (parallel_agent& self)
     {
-        int i = self.index();
-        z_ptr[i] = a * x_ptr[i] + y_ptr[i];
+        int row = self.index() / n;
+        int col = self.index() % n;
+
+        for (int k = 0; k < n; ++k) {
+            c_ptr[row].data()[col] += a_ptr[row].data()[k] *
+                                      b_ptr[k].data()[col];
+        }
     });
-    assert(z == reference);
-    std::fill(z.begin(), z.end(), 0);*/
+    difference = clock() - begin_time;
+
+    for (auto i = c.begin(); i < c.end(); ++i) {
+        for (auto j = i -> begin(); j < i -> end(); ++j) {
+            assert(*j == n);
+            *j = 0;
+        };
+    }
+
+    printf("Parallel All GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+
     std::cout << "OK" << std::endl;
     return 0;
 }
