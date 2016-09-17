@@ -9,18 +9,19 @@ int main()
 {
     using namespace agency;
     // allocate data in GPU memory
-    using vector = std::vector<size_t, cuda::managed_allocator<size_t>>;
-    using matrix = std::vector<vector, cuda::managed_allocator<vector>>;
+    using matrix = std::vector<size_t, cuda::managed_allocator<size_t>>;
     
     size_t n = 1 << 10;
-    
-    matrix a(n, vector(n, 1));
-    matrix b(n, vector(n, 1));
-    matrix c(n, vector(n, 0));
-    
-    vector* a_ptr = a.data();
-    vector* b_ptr = b.data();
-    vector* c_ptr = c.data();
+
+    matrix a(n*n, 1);
+    matrix b(n*n, 1);
+    matrix c(n*n, 0);
+
+    matrix reference(n*n, n);
+
+    size_t* a_ptr = a.data();
+    size_t* b_ptr = b.data();
+    size_t* c_ptr = c.data();
     
     // execute sequentially in the current thread
     clock_t begin_time = clock();
@@ -30,18 +31,14 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] * 
-                                      b_ptr[k].data()[col];
+            c_ptr[n*row + col] += a_ptr[n*row + k] *
+                                  b_ptr[n*k + col];
         }
     });
     clock_t difference = clock() - begin_time;
 
-    for (auto i = c.begin(); i < c.end(); ++i) {
-        for (auto j = i -> begin(); j < i -> end(); ++j) {
-            assert(*j == n);
-            *j = 0;
-        };
-    }
+    assert(c == reference);
+    std::fill(c.begin(), c.end(), 0);
 
     printf("Sequential Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
@@ -53,18 +50,14 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] * 
-                                      b_ptr[k].data()[col];
+            c_ptr[n*row + col] += a_ptr[n*row + k] *
+                                  b_ptr[n*k + col];
         }
     });
     difference = clock() - begin_time;
 
-    for (auto i = c.begin(); i < c.end(); ++i) {
-        for (auto j = i -> begin(); j < i -> end(); ++j) {
-            assert(*j == n);
-            *j = 0;
-        };
-    }
+    assert(c == reference);
+    std::fill(c.begin(), c.end(), 0);
 
     printf("Parallel CPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
@@ -77,18 +70,14 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] *
-                                      b_ptr[k].data()[col];
+            c_ptr[n*row + col] += a_ptr[n*row + k] *
+                                  b_ptr[n*k + col];
         }
     });
     difference = clock() - begin_time;
 
-    for (auto i = c.begin(); i < c.end(); ++i) {
-        for (auto j = i -> begin(); j < i -> end(); ++j) {
-            assert(*j == n);
-            *j = 0;
-        };
-    }
+    assert(c == reference);
+    std::fill(c.begin(), c.end(), 0);
 
     printf("Parallel Single GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
@@ -101,18 +90,14 @@ int main()
         int col = self.index() % n;
 
         for (int k = 0; k < n; ++k) {
-            c_ptr[row].data()[col] += a_ptr[row].data()[k] *
-                                      b_ptr[k].data()[col];
+            c_ptr[n*row + col] += a_ptr[n*row + k] *
+                                  b_ptr[n*k + col];
         }
     });
     difference = clock() - begin_time;
 
-    for (auto i = c.begin(); i < c.end(); ++i) {
-        for (auto j = i -> begin(); j < i -> end(); ++j) {
-            assert(*j == n);
-            *j = 0;
-        };
-    }
+    assert(c == reference);
+    std::fill(c.begin(), c.end(), 0);
 
     printf("Parallel All GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
