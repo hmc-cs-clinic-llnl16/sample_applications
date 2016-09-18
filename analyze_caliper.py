@@ -1,4 +1,6 @@
 #!/usr/bin python
+from __future__ import division
+
 import math
 import os
 import sys
@@ -15,7 +17,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy import stats
 
-cali_file = os.path.join('build', 'matrix_multiplication', '160915-121651_10997_SwvkRFzqy9mC.cali')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('cali_file', help="The cali file to be analyzed should go here")
+args = parser.parse_args()
+
+cali_file = args.cali_file
 
 ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
 CALI_QUERY = [os.path.join('build', 'tpl', 'bin', 'cali-query'),'-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
@@ -74,8 +81,18 @@ realDataframe = pd.DataFrame(data=d, columns=['Size', 'Control', 'OMPmean', 'OMP
 
 fig = plt.figure()
 sizes = sorted(OMP)
+legendNames = []
 plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']) 
+legendNames.append('OMP RAJA')
 plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
+legendNames.append('Serial RAJA')
 plt.plot(sizes, control.values(), color='g')
-plt.plot()
+legendNames.append('Serial non-RAJA')
+plt.legend(legendNames, loc='lower right')
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel('matrix size', fontsize=16)
+plt.ylabel('time taken', fontsize=16)
+plt.grid(b=True, which='major', color='k', linestyle='dotted')
+plt.title('Testing RAJA speed', fontsize=16)
 plt.savefig('tmp.pdf')

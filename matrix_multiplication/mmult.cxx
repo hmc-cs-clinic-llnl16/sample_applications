@@ -98,6 +98,17 @@ std::vector<T> mult(const std::vector<T>& lhs, const std::vector<T>& rhs, const 
   return resultV;
 }
 
+int interpolateNumberLinearlyOnLogScale(
+    const int lower, const int upper,
+    const unsigned int numberOfPoints,
+    const unsigned int pointIndex) {
+  const double percent =
+    pointIndex / static_cast<double>(numberOfPoints - 1);
+  const double power = std::log10(lower) +
+    percent * (std::log10(upper) - std::log10(lower));
+  return std::pow(10., power);
+}
+
 template <typename MATRIX>
 void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
     cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
@@ -125,9 +136,8 @@ void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
     }
 }
 
-int main(int argc, char** argv) {
-  constexpr static std::array<RAJA::Index_type, 7> NUM_ROWS = {2<<8, 2<<9, 2<<10, 2<<11, 2<<12, 2<<13, 2<<14};
-  constexpr static std::array<RAJA::Index_type, 7> NUM_COLS = NUM_ROWS;
+int main(int argc, char** argv) { 
+  constexpr static std::size_t numSizes = 10;
   constexpr static std::size_t NUM_TRIALS = 10;
 
   std::random_device rd;
@@ -135,9 +145,9 @@ int main(int argc, char** argv) {
   std::uniform_real_distribution<double> dist(0, 5);
 
   auto size = cali::Annotation("size");
-  for (int sizeIndex = 0; sizeIndex < NUM_ROWS.size(); ++sizeIndex) {
-    auto rows = NUM_ROWS[sizeIndex];
-    auto cols = NUM_COLS[sizeIndex];
+  for (int sizeIndex = 0; sizeIndex < numSizes; ++sizeIndex) {
+    auto rows = interpolateNumberLinearlyOnLogScale(100, 5000, numSizes, sizeIndex);
+    auto cols = rows;
     size.set(rows);
     std::cout << "Starting size " << rows << "\n";
 
