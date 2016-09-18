@@ -27,6 +27,8 @@ else ()
       GIT_TAG ${RAJA_GIT_TAG}
       CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
+        -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
         -DCMAKE_BUILD_TYPE=Release
         -DRAJA_ENABLE_NESTED=On
         -DRAJA_ENABLE_TESTS=Off
@@ -54,6 +56,44 @@ if(RAJA_ENABLE_CUDA)
     set (CUDA_PROPAGATE_HOST_FLAGS OFF)
     include_directories(${CUDA_INCLUDE_DIRS})
   endif()
+endif()
+
+if (CALIPER_DIR)
+  find_package(CALIPER QUIET)
+  include_directories(${caliper_INCLUDE_DIR})
+  add_library(CALIPER UNKNOWN IMPORTED)
+  set_target_properties(CALIPER PROPERTIES
+    IMPORTED_LOCATION ${caliper_LIB_DIR}/lib/libcaliper.so
+  )
+else ()
+  if (NOT CALIPER_GIT_TAG)
+    set(CALIPER_GIT_TAG master)
+  endif()
+  if (NOT CALIPER_GIT_REPO)
+    set(CALIPER_GIT_REPO https://github.com/LLNL/Caliper.git )
+  endif()
+  ExternalProject_Add(
+      caliper
+      GIT_REPOSITORY ${CALIPER_GIT_REPO}
+      GIT_TAG ${CALIPER_GIT_TAG}
+      CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/tpl
+        -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+      LOG_DOWNLOAD ON
+      LOG_CONFIGURE ON
+      LOG_BUILD ON)
+
+  ExternalProject_Get_Property(caliper install_dir)
+  set(CALIPER_DIR ${install_dir}/share/cmake/caliper/)
+  include_directories(${install_dir}/include)
+
+  add_library(CALIPER      UNKNOWN IMPORTED)
+  set_target_properties(CALIPER PROPERTIES
+    IMPORTED_LOCATION ${install_dir}/lib/libcaliper.so
+  )
+  add_dependencies(CALIPER caliper)
 endif()
 
 add_subdirectory(matrix_multiplication)
