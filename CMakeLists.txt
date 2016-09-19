@@ -98,4 +98,4 @@ endif()
 
 add_subdirectory(matrix_multiplication)
 add_subdirectory(fft)
-
+add_subdirectory(dependent_index_sets)
