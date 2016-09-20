@@ -11,7 +11,7 @@ set(
         CUDA_NVCC_FLAGS
         ${CUDA_NVCC_FLAGS};
         -O3;
-        -arch=sm_20;
+        -arch=sm_32;
         -std=c++11;
         --expt-extended-lambda
 )
