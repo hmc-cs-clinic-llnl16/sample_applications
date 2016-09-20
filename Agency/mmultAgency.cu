@@ -58,12 +58,13 @@ void parallelSingleGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t 
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
     auto right_rows = agency::experimental::tile_evenly(right_data, n);
-    agency::cuda::grid_executor gpu;
+    agency::cuda::parallel_executor outer_executor;
 
-    agency::bulk_invoke(agency::par(n).on(gpu), [=] __device__ (agency::parallel_agent& outer)
+    agency::bulk_invoke(agency::par(n).on(outer_executor), [=] __device__ (agency::parallel_agent& outer)
     {
         auto left_row = left_rows[outer.index()];
-        agency::bulk_invoke(agency::par(n).on(gpu), [=] __device__ (agency::parallel_agent& inner)
+        agency::cuda::block_executor inner_executor;
+        agency::bulk_invoke(agency::par(n).on(inner_executor), [=] __device__ (agency::parallel_agent& inner)
         {
             auto right_row = right_rows[inner.index()];
             for (int k = 0; k < n; ++k) {
