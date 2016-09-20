@@ -1,5 +1,6 @@
 #include <agency/agency.hpp>
 #include <agency/cuda.hpp>
+#include <agency/experimental.hpp>
 #include <vector>
 #include <cassert>
 #include <iostream>
@@ -15,10 +16,76 @@ void sequentialMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
     auto right_rows = agency::experimental::tile_evenly(right_data, n);
+
     agency::bulk_invoke(agency::seq(n), [=](agency::sequenced_agent& outer)
     {
         auto left_row = left_rows[outer.index()];
         agency::bulk_invoke(agency::seq(n), [=](agency::sequenced_agent& inner)
+        {
+            auto right_row = right_rows[inner.index()];
+            for (int k = 0; k < n; ++k) {
+                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            }
+        });
+    });
+}
+
+void parallelCpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
+    agency::experimental::span<size_t> left_data(left.data(), n);
+    agency::experimental::span<size_t> right_data(right.data(), n);
+    size_t* out_ptr = out.data();
+
+    auto left_rows = agency::experimental::tile_evenly(left_data, n);
+    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+
+    agency::bulk_invoke(agency::par(n), [=](agency::parallel_agent& outer)
+    {
+        auto left_row = left_rows[outer.index()];
+        agency::bulk_invoke(agency::par(n), [=](agency::parallel_agent& inner)
+        {
+            auto right_row = right_rows[inner.index()];
+            for (int k = 0; k < n; ++k) {
+                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            }
+        });
+    });
+}
+
+void parallelSingleGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
+    agency::experimental::span<size_t> left_data(left.data(), n);
+    agency::experimental::span<size_t> right_data(right.data(), n);
+    size_t* out_ptr = out.data();
+
+    auto left_rows = agency::experimental::tile_evenly(left_data, n);
+    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+    agency::cuda::grid_executor gpu;
+
+    agency::bulk_invoke(agency::par(n).on(gpu), [=] __device__ (agency::parallel_agent& outer)
+    {
+        auto left_row = left_rows[outer.index()];
+        agency::bulk_invoke(agency::par(n).on(gpu), [=] __device__ (agency::parallel_agent& inner)
+        {
+            auto right_row = right_rows[inner.index()];
+            for (int k = 0; k < n; ++k) {
+                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            }
+        });
+    });
+}
+
+void parallelAllGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
+    agency::experimental::span<size_t> left_data(left.data(), n);
+    agency::experimental::span<size_t> right_data(right.data(), n);
+    size_t* out_ptr = out.data();
+
+    auto left_rows = agency::experimental::tile_evenly(left_data, n);
+    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+    agency::cuda::multidevice_executor all_gpus;
+
+    agency::bulk_invoke(agency::par(n).on(all_gpus), [=] __device__ (agency::parallel_agent& outer)
+    {
+        auto left_row = left_rows[outer.index()];
+        agency::bulk_invoke(agency::par(n).on(all_gpus), [=] __device__ (agency::parallel_agent& inner)
         {
             auto right_row = right_rows[inner.index()];
             for (int k = 0; k < n; ++k) {
@@ -47,20 +114,10 @@ int main()
     std::fill(c.begin(), c.end(), 0);
 
     printf("Sequential Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
-/*
 
     // execute in parallel on the CPU
     begin_time = clock();
-    bulk_invoke(par(n*n), [=](parallel_agent& self)
-    {
-        int row = self.index() / n;
-        int col = self.index() % n;
-
-        for (int k = 0; k < n; ++k) {
-            c_ptr[n*row + col] += a_ptr[n*row + k] *
-                                  b_ptr[n*k + col];
-        }
-    });
+    parallelCpuMultiply(a, b, c, n);
     difference = clock() - begin_time;
 
     assert(c == reference);
@@ -70,44 +127,25 @@ int main()
 
     // execute in parallel on a GPU
     begin_time = clock();
-    cuda::grid_executor gpu;
-    bulk_invoke(par(n*n).on(gpu), [=] __device__ (parallel_agent& self)
-    {
-        int row = self.index() / n;
-        int col = self.index() % n;
-
-        for (int k = 0; k < n; ++k) {
-            c_ptr[n*row + col] += a_ptr[n*row + k] *
-                                  b_ptr[n*k + col];
-        }
-    });
+    parallelSingleGpuMultiply(a, b, c, n);
     difference = clock() - begin_time;
 
     assert(c == reference);
     std::fill(c.begin(), c.end(), 0);
 
-    printf("Parallel Single GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+    printf("Parallel single GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
     // execute in parallel on all GPUs in the system
     begin_time = clock();
-    cuda::multidevice_executor all_gpus;
-    bulk_invoke(par(n).on(all_gpus), [=] __device__ (parallel_agent& self)
-    {
-        int row = self.index() / n;
-        int col = self.index() % n;
-
-        for (int k = 0; k < n; ++k) {
-            c_ptr[n*row + col] += a_ptr[n*row + k] *
-                                  b_ptr[n*k + col];
-        }
-    });
+    parallelAllGpuMultiply(a, b, c, n);
     difference = clock() - begin_time;
 
     assert(c == reference);
     std::fill(c.begin(), c.end(), 0);
 
     printf("Parallel All GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
-*/
+
+    // Success!
     std::cout << "OK" << std::endl;
     return 0;
 }
