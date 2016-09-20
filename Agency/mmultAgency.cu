@@ -17,16 +17,16 @@ void sequentialMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
     auto right_rows = agency::experimental::tile_evenly(right_data, n);
 
-    agency::bulk_invoke(agency::seq(n), [=](agency::sequenced_agent& outer)
+    agency::bulk_invoke(agency::seq(n, agency::seq(n)), [=](agency::sequenced_group<agency::sequenced_agent>& self)
     {
+        auto outer = self.outer();
+        auto inner = self.inner();
+
         auto left_row = left_rows[outer.index()];
-        agency::bulk_invoke(agency::seq(n), [=](agency::sequenced_agent& inner)
-        {
-            auto right_row = right_rows[inner.index()];
-            for (int k = 0; k < n; ++k) {
-                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
-            }
-        });
+        auto right_row = right_rows[inner.index()];
+        for (int k = 0; k < n; ++k) {
+            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+        }
     });
 }
 
@@ -38,61 +38,37 @@ void parallelCpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
     auto right_rows = agency::experimental::tile_evenly(right_data, n);
 
-    agency::bulk_invoke(agency::par(n), [=](agency::parallel_agent& outer)
+    agency::bulk_invoke(agency::par(n, agency::par(n)), [=](agency::parallel_group<agency::parallel_agent>& self)
     {
+        auto outer = self.outer();
+        auto inner = self.inner();
+
         auto left_row = left_rows[outer.index()];
-        agency::bulk_invoke(agency::par(n), [=](agency::parallel_agent& inner)
-        {
-            auto right_row = right_rows[inner.index()];
-            for (int k = 0; k < n; ++k) {
-                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
-            }
-        });
+        auto right_row = right_rows[inner.index()];
+        for (int k = 0; k < n; ++k) {
+            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+        }
     });
 }
 
-void parallelSingleGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
+void parallelGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     agency::experimental::span<size_t> left_data(left.data(), n);
     agency::experimental::span<size_t> right_data(right.data(), n);
     size_t* out_ptr = out.data();
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
     auto right_rows = agency::experimental::tile_evenly(right_data, n);
-    agency::cuda::parallel_executor outer_executor;
 
-    agency::bulk_invoke(agency::par(n).on(outer_executor), [=] __device__ (agency::parallel_agent& outer)
+    agency::cuda::bulk_invoke(agency::cuda::par(n, agency::cuda::par(n)), [=](agency::parallel_group<agency::cuda::parallel_agent>& self)
     {
+        auto outer = self.outer();
+        auto inner = self.inner();
+
         auto left_row = left_rows[outer.index()];
-        agency::cuda::block_executor inner_executor;
-        agency::bulk_invoke(agency::par(n).on(inner_executor), [=] __device__ (agency::parallel_agent& inner)
-        {
-            auto right_row = right_rows[inner.index()];
-            for (int k = 0; k < n; ++k) {
-                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
-            }
-        });
-    });
-}
-
-void parallelAllGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
-    agency::experimental::span<size_t> left_data(left.data(), n);
-    agency::experimental::span<size_t> right_data(right.data(), n);
-    size_t* out_ptr = out.data();
-
-    auto left_rows = agency::experimental::tile_evenly(left_data, n);
-    auto right_rows = agency::experimental::tile_evenly(right_data, n);
-    agency::cuda::multidevice_executor all_gpus;
-
-    agency::bulk_invoke(agency::par(n).on(all_gpus), [=] __device__ (agency::parallel_agent& outer)
-    {
-        auto left_row = left_rows[outer.index()];
-        agency::bulk_invoke(agency::par(n).on(all_gpus), [=] __device__ (agency::parallel_agent& inner)
-        {
-            auto right_row = right_rows[inner.index()];
-            for (int k = 0; k < n; ++k) {
-                out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
-            }
-        });
+        auto right_row = right_rows[inner.index()];
+        for (int k = 0; k < n; ++k) {
+            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+        }
     });
 }
 
@@ -130,23 +106,13 @@ int main()
 
     // execute in parallel on a GPU
     begin_time = clock();
-    parallelSingleGpuMultiply(a, b, c, n);
+    parallelGpuMultiply(a, b, c, n);
     difference = clock() - begin_time;
 
     assert(c == reference);
     std::fill(c.begin(), c.end(), 0);
 
-    printf("Parallel single GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
-
-    // execute in parallel on all GPUs in the system
-    begin_time = clock();
-    parallelAllGpuMultiply(a, b, c, n);
-    difference = clock() - begin_time;
-
-    assert(c == reference);
-    std::fill(c.begin(), c.end(), 0);
-
-    printf("Parallel All GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
+    printf("Parallel GPU Execution took %ld clicks (%f seconds).\n", difference, ((float) difference)/CLOCKS_PER_SEC);
 
     // Success!
     std::cout << "OK" << std::endl;
