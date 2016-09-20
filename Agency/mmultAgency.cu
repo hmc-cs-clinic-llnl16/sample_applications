@@ -15,19 +15,19 @@ void sequentialMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     size_t* out_ptr = out.data();
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
-    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+    auto right_cols = agency::experimental::tile_evenly(right_data, n);
 
     agency::size2 shape{n,n};
 
     agency::bulk_invoke(agency::seq(shape), [=](agency::sequenced_agent_2d& self)
     {
-        auto outer = self.outer();
-        auto inner = self.inner();
+        size_t row = self.index()[0];
+        size_t col = self.index()[1];
+        auto left_row = left_rows[row];
+        auto right_col = right_cols[col];
 
-        auto left_row = left_rows[outer.index()];
-        auto right_row = right_rows[inner.index()];
         for (int k = 0; k < n; ++k) {
-            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            out_ptr[n * row + col] += left_row[k] * right_col[k];
         }
     });
 }
@@ -38,19 +38,19 @@ void parallelCpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     size_t* out_ptr = out.data();
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
-    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+    auto right_cols = agency::experimental::tile_evenly(right_data, n);
 
     agency::size2 shape{n,n};
 
     agency::bulk_invoke(agency::par(shape), [=](agency::parallel_agent_2d& self)
     {
-        auto outer = self.outer();
-        auto inner = self.inner();
+        size_t row = self.index()[0];
+        size_t col = self.index()[1];
+        auto left_row = left_rows[row];
+        auto right_col = right_cols[col];
 
-        auto left_row = left_rows[outer.index()];
-        auto right_row = right_rows[inner.index()];
         for (int k = 0; k < n; ++k) {
-            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            out_ptr[n * row + col] += left_row[k] * right_col[k];
         }
     });
 }
@@ -61,20 +61,20 @@ void parallelGpuMultiply(Matrix& left, Matrix& right, Matrix& out, size_t n) {
     size_t* out_ptr = out.data();
 
     auto left_rows = agency::experimental::tile_evenly(left_data, n);
-    auto right_rows = agency::experimental::tile_evenly(right_data, n);
+    auto right_cols = agency::experimental::tile_evenly(right_data, n);
 
     agency::size2 shape{n,n};
     agency::cuda::parallel_executor gpu;
 
     agency::bulk_invoke(agency::par(shape).on(gpu), [=] __device__ (agency::parallel_agent_2d& self)
     {
-        auto outer = self.outer();
-        auto inner = self.inner();
+        size_t row = self.index()[0];
+        size_t col = self.index()[1];
+        auto left_row = left_rows[row];
+        auto right_col = right_cols[col];
 
-        auto left_row = left_rows[outer.index()];
-        auto right_row = right_rows[inner.index()];
         for (int k = 0; k < n; ++k) {
-            out_ptr[n * outer.index() + inner.index()] += left_row[k] * right_row[k];
+            out_ptr[n * row + col] += left_row[k] * right_col[k];
         }
     });
 }
