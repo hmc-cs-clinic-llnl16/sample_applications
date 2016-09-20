@@ -100,12 +100,14 @@ int main()
 {
     size_t n = 1 << 10;
 
+    // N.B. All multiply functions expect the right matrix to be transposed before being called.
+    // However, we are only using symmetric matrices here so that doesn't matter
     Matrix a(n*n, 1);
     Matrix b(n*n, 1);
     Matrix c(n*n, 0);
 
     Matrix reference(n*n, n);
-    
+
     // execute sequentially in the current thread
     clock_t begin_time = clock();
     sequentialMultiply(a, b, c, n);
