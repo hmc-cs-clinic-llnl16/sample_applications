@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include <iostream>
+#include <functional>
 #include <vector>
 #include <type_traits>
 #include <random>
@@ -14,6 +15,8 @@
 #include "RAJA/RAJA.hxx"
 
 #include "caliper/Annotation.h"
+
+#include "../common/timing.hxx"
 
 template <typename T, typename Policy>
 class Matrix {
@@ -110,20 +113,6 @@ int interpolateNumberLinearlyOnLogScale(
 }
 
 template <typename MATRIX>
-void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
-    cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
-    auto iteration = cali::Annotation("iteration");
-    for (RAJA::Index_type i = 0; i < numTrials; ++i) {  
-      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "\n"; 
-      iteration.set(i);
-      auto actualResult = left * right;
-      iteration.set("test");
-      checkResult(actualResult, result);
-    }
-    iteration.end();
-}
-
-template <typename MATRIX>
 void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
     for (std::size_t i = 0; i < actual.getRows(); ++i) {
       for (std::size_t j = 0; j < actual.getCols(); ++j) {
@@ -134,6 +123,24 @@ void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
         }
       }
     }
+}
+
+template <typename MATRIX>
+void timingTestFunction(MATRIX& left, MATRIX& right, const std::vector<double>& expectedResult, const std::string& description, const std::size_t numTrials) {
+  runTimingTest<std::function<MATRIX(MATRIX&, MATRIX&)>, 
+                checkResult<MATRIX>, 
+                std::vector<double>, 
+                MATRIX, 
+                MATRIX
+               >(
+    [](MATRIX& left, MATRIX& right) { 
+      return left * right; 
+    }, 
+    expectedResult, 
+    description, 
+    numTrials, 
+    left, 
+    right);
 }
 
 int main(int argc, char** argv) { 
@@ -177,7 +184,7 @@ int main(int argc, char** argv) {
     auto resultV = mult(control1, control2, rows, cols);
     control.end();
     try {
-      runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);
+      timingTestFunction<Matrix<double, SerialPolicy>>(matrix1, matrix2, resultV, "RAJA Serial", NUM_TRIALS);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;
@@ -186,7 +193,7 @@ int main(int argc, char** argv) {
     std::cout << "Completed matrix multiplication serial style without error.\n";
 
     try {
-      runTimingText(matrix3, matrix4, resultV, NUM_TRIALS);
+      timingTestFunction<Matrix<double, OmpPolicy>>(matrix3, matrix4, resultV, "RAJA OMP", NUM_TRIALS);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;
