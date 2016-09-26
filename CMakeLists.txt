@@ -72,6 +72,7 @@ else ()
   if (NOT CALIPER_GIT_REPO)
     set(CALIPER_GIT_REPO https://github.com/LLNL/Caliper.git )
   endif()
+  find_package(PythonInterp)
   ExternalProject_Add(
       caliper
       GIT_REPOSITORY ${CALIPER_GIT_REPO}

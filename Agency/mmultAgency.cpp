@@ -9,7 +9,6 @@
 #include <sstream>
 
 #include "agency/agency.hpp"
-#include "agency/cuda.hpp"
 
 #include "caliper/Annotation.h"
 
@@ -30,11 +29,11 @@ public:
 
         auto result = Matrix<T, Policy>(rows_, rhs.cols_, T());
 
-        int* lhs_ptr = data_.data();
-        int* rhs_ptr = rhs.data_.data();
-        int* result_ptr = result.data_.data();
+        T* lhs_ptr = data_.data();
+        T* rhs_ptr = rhs.data_.data();
+        T* result_ptr = result.data_.data();
 
-        agency::bulk_invoke(Policy::EXEC(rows_*rhs.cols_),
+        agency::bulk_invoke(Policy::policy(rows_*rhs.cols_),
                             [=](Policy::AGENT& self) {
                                 int row = self.index() / rhs.cols_;
                                 int col = self.index() % rhs.cols_;
@@ -60,14 +59,14 @@ public:
 };
 
 struct SequentialPolicy {
-    using EXEC = agency::seq;
     using AGENT = agency::sequenced_agent;
+    agency::basic_execution_policy<agency::sequenced_agent, agency::sequenced_executor> policy = agency::seq();
     static constexpr char* name = "Sequential";
 };
 
 struct ParallelPolicy {
-    using EXEC = agency::par;
     using AGENT = agency::parallel_agent;
+    agency::basic_execution_policy<agency::parallel_agent, agency::parallel_executor> policy = agency::par();
     static constexpr char* name = "Parallel";
 };
 
@@ -80,7 +79,7 @@ std::vector<T> mult(const std::vector<T>& lhs, const int lhs_rows, const int lhs
     for (int row = 0; row < lhs_rows; ++row) {
         for (int col = 0; col < rhs_cols; ++col) {
             T result = 0;
-            for (int k = 0; k < rows; ++k) {
+            for (int k = 0; k < lhs_cols; ++k) {
                 result += lhs[row * lhs_cols + k] * rhs[k * rhs_cols + col];
             }
             resultV[row * rhs_cols + col] = result;
@@ -167,7 +166,7 @@ int main(int argc, char** argv) {
         init.end();
 
         auto control = cali::Annotation("control").begin();
-        auto resultV = mult(control1, control2, rows, cols);
+        auto resultV = mult(control1, rows, cols, control2, rows, cols);
         control.end();
         try {
             runTimingTest(matrix1, matrix2, resultV, NUM_TRIALS);
