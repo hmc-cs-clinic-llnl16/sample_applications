@@ -12,42 +12,68 @@
 
 #include "caliper/Annotation.h"
 
-template <typename T, typename Policy>
+enum Policy {sequential, parallel};
+
+template <typename T>
 class Matrix {
     int rows_;
     int cols_;
     std::vector<T> data_;
+    Policy policy_;
 public:
-    static constexpr char* name = Policy::name;
     Matrix() { }
 
-    Matrix(const int rows, const int cols, const T& defaultValue = T())
-            : rows_(rows), cols_(cols), data_(rows_ * cols_, defaultValue) { }
+    Matrix(const int rows, const int cols, const Policy policy, const T& defaultValue = T())
+            : rows_(rows), cols_(cols), data_(rows_ * cols_, defaultValue), policy_(policy) { }
 
-    Matrix<T, Policy> operator*(Matrix<T, Policy>& rhs) {
+    Matrix<T> operator*(Matrix<T>& rhs) {
         assert(cols_ == rhs.rows_);
 
-        auto result = Matrix<T, Policy>(rows_, rhs.cols_, T());
+        auto result = Matrix<T>(rows_, rhs.cols_, policy_, T());
 
         T* lhs_ptr = data_.data();
         T* rhs_ptr = rhs.data_.data();
         T* result_ptr = result.data_.data();
 
-        agency::bulk_invoke(Policy::policy(rows_*rhs.cols_),
-                            [=](Policy::AGENT& self) {
-                                int row = self.index() / rhs.cols_;
-                                int col = self.index() % rhs.cols_;
+        switch (policy_) {
+            case sequential:
+                agency::bulk_invoke(agency::seq(rows_*rhs.cols_),
+                                    [=](agency::sequenced_agent& self) {
+                                        int row = self.index() / rhs.cols_;
+                                        int col = self.index() % rhs.cols_;
 
-                                for (int k = 0; k < cols_; ++k) {
-                                    result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
-                                                                         rhs_ptr[rhs.cols_ * k + col];
-                                }
-                            });
+                                        for (int k = 0; k < cols_; ++k) {
+                                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
+                                                                                 rhs_ptr[rhs.cols_ * k + col];
+                                        }
+                                    });
+                break;
+            case parallel:
+                agency::bulk_invoke(agency::par(rows_*rhs.cols_),
+                                    [=](agency::parallel_agent& self) {
+                                        int row = self.index() / rhs.cols_;
+                                        int col = self.index() % rhs.cols_;
+
+                                        for (int k = 0; k < cols_; ++k) {
+                                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
+                                                                                 rhs_ptr[rhs.cols_ * k + col];
+                                        }
+                                    });
+        }
         return result;
     }
 
     int getRows() const { return rows_; }
     int getCols() const { return cols_; }
+    char* getPolicyName() {
+        switch (policy_) {
+            case sequential:
+                return "sequential";
+            case parallel:
+                return "parallel";
+        }
+    }
+
 
     T& operator()(const int row, const int col) {
         return data_[row * cols_ + col];
@@ -57,19 +83,6 @@ public:
         return data_[row * cols_ + col];
     }
 };
-
-struct SequentialPolicy {
-    using AGENT = agency::sequenced_agent;
-    agency::basic_execution_policy<agency::sequenced_agent, agency::sequenced_executor> policy = agency::seq();
-    static constexpr char* name = "Sequential";
-};
-
-struct ParallelPolicy {
-    using AGENT = agency::parallel_agent;
-    agency::basic_execution_policy<agency::parallel_agent, agency::parallel_executor> policy = agency::par();
-    static constexpr char* name = "Parallel";
-};
-
 
 template <typename T>
 std::vector<T> mult(const std::vector<T>& lhs, const int lhs_rows, const int lhs_cols,
@@ -103,10 +116,10 @@ int interpolateNumberLinearlyOnLogScale(
 
 template <typename MATRIX>
 void runTimingTest(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
-    cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
+    cali::Annotation::Guard timing_test(cali::Annotation(left.getPolicyName()).begin());
     auto iteration = cali::Annotation("iteration");
     for (int i = 0; i < numTrials; ++i) {
-        std::cout << "Started iteration " << i << " of type " << MATRIX::name << "\n";
+        std::cout << "Started iteration " << i << " of type " << left.getPolicyName() << "\n";
         iteration.set(i);
         auto actualResult = left * right;
         iteration.set("test");
@@ -138,16 +151,16 @@ int main(int argc, char** argv) {
 
     auto size = cali::Annotation("size");
     for (int sizeIndex = 0; sizeIndex < numSizes; ++sizeIndex) {
-        auto rows = interpolateNumberLinearlyOnLogScale(100, 5000, numSizes, sizeIndex);
+        auto rows = interpolateNumberLinearlyOnLogScale(10, 100, numSizes, sizeIndex);
         auto cols = rows;
         size.set(rows);
         std::cout << "Starting size " << rows << "\n";
 
         auto init = cali::Annotation("initialization").begin();
-        auto matrix1 = Matrix<double, SequentialPolicy>(rows, cols);
-        auto matrix2 = Matrix<double, SequentialPolicy>(rows, cols);
-        auto matrix3 = Matrix<double, ParallelPolicy>(rows, cols);
-        auto matrix4 = Matrix<double, ParallelPolicy>(rows, cols);
+        auto matrix1 = Matrix<double>(rows, cols, sequential);
+        auto matrix2 = Matrix<double>(rows, cols, sequential);
+        auto matrix3 = Matrix<double>(rows, cols, parallel);
+        auto matrix4 = Matrix<double>(rows, cols, parallel);
 
         auto control1 = std::vector<double>(rows * cols);
         auto control2 = std::vector<double>(rows * cols);
