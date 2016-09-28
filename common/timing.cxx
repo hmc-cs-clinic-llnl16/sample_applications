@@ -6,8 +6,8 @@
 #include <string>
 #include <utility>
 
-template <typename Functor, typename CheckFunctor, typename Result, typename... Args>
-void runTimingTest(Functor& f, const Result& expectedResult, const std::string& description, const std::size_t numTrials, Args&&... args) {
+template <typename Functor, typename CheckFunctor, typename... Args>
+void runTimingTest(Functor& f, CheckFunctor& cf, const std::string& description, const std::size_t numTrials, Args&&... args) {
   cali::Annotation::Guard timing_test(cali::Annotation(description).begin());
   auto iteration = cali::Annotation("iteration");
   for (int i = 0; i < numTrials; ++i) {
@@ -15,7 +15,7 @@ void runTimingTest(Functor& f, const Result& expectedResult, const std::string& 
     iteration.set(i);
     auto result = f(std::forward<Args>(args)...);
     iteration.set("test");
-    CheckFunctor(result, expectedResult);
+    cf(result);
   }
   iteration.end();
 }

@@ -84,6 +84,11 @@ struct OmpPolicy {
   static constexpr char* name = "OMP";
 };
 
+template <typename M>
+M mmult(M& lhs, M& rhs) {
+  return lhs * rhs;
+}
+
 template <typename T>
 std::vector<T> mult(const std::vector<T>& lhs, const std::vector<T>& rhs, const std::size_t rows, const std::size_t cols) {
   std::vector<T> resultV(rows * cols, 0);
@@ -112,36 +117,23 @@ int interpolateNumberLinearlyOnLogScale(
   return std::pow(10., power);
 }
 
-template <typename MATRIX>
-void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
+struct ResultCheckFunctor {
+  std::vector<double> expectedResult;
+
+  template <typename MATRIX>
+  void operator()(const MATRIX& actual) {
     for (std::size_t i = 0; i < actual.getRows(); ++i) {
       for (std::size_t j = 0; j < actual.getCols(); ++j) {
-        if (actual(i, j) != expected[i * actual.getCols() + j]) {
+        auto index = i * actual.getCols() + j;
+        if (actual(i, j) != expectedResult[index]) {
           std::ostringstream os;
-          os << "Invalid value at: (" << i << ", " << j << "). Was " << actual(i, j) << " but expected " << expected[i * actual.getCols()  + j] << "\n";
+          os << "Invalid value at: (" << i << ", " << j << "). Was " << actual(i, j) << " but expected " << expectedResult[index] << "\n";
           throw std::runtime_error(os.str());
         }
       }
     }
-}
-
-template <typename MATRIX>
-void timingTestFunction(MATRIX& left, MATRIX& right, const std::vector<double>& expectedResult, const std::string& description, const std::size_t numTrials) {
-  runTimingTest<std::function<MATRIX(MATRIX&, MATRIX&)>, 
-                checkResult<MATRIX>, 
-                std::vector<double>, 
-                MATRIX, 
-                MATRIX
-               >(
-    [](MATRIX& left, MATRIX& right) { 
-      return left * right; 
-    }, 
-    expectedResult, 
-    description, 
-    numTrials, 
-    left, 
-    right);
-}
+  }
+};
 
 int main(int argc, char** argv) { 
   constexpr static std::size_t numSizes = 10;
@@ -184,7 +176,8 @@ int main(int argc, char** argv) {
     auto resultV = mult(control1, control2, rows, cols);
     control.end();
     try {
-      timingTestFunction<Matrix<double, SerialPolicy>>(matrix1, matrix2, resultV, "RAJA Serial", NUM_TRIALS);
+      ResultCheckFunctor f{resultV};
+      runTimingTest(mmult<Matrix<double, SerialPolicy>>, f, "RAJA Serial", NUM_TRIALS, matrix1, matrix2);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;
@@ -193,7 +186,8 @@ int main(int argc, char** argv) {
     std::cout << "Completed matrix multiplication serial style without error.\n";
 
     try {
-      timingTestFunction<Matrix<double, OmpPolicy>>(matrix3, matrix4, resultV, "RAJA OMP", NUM_TRIALS);
+      ResultCheckFunctor f{resultV};
+      runTimingTest(mmult<Matrix<double, OmpPolicy>>, f, "RAJA OMP", NUM_TRIALS, matrix3, matrix4);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;

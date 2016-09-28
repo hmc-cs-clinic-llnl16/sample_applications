@@ -97,4 +97,5 @@ else ()
 endif()
 
 add_subdirectory(matrix_multiplication)
+add_subdirectory(common)
 
