@@ -13,4 +13,4 @@ make mmultAgency.exe
 cd Agency
 CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmultAgency.exe
 cd ../..
-python ./analyze_caliper.py $(find ./build/Agency/*.cali | tail -n 1)
+../anaconda2/bin/python2.7 Agency/analyze_caliper.py $(find ./build/Agency/*.cali | tail -n 1)
