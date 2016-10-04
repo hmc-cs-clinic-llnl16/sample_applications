@@ -17,82 +17,94 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy import stats
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--cali_file', help="The cali file to be analyzed should go here")
+    parser.add_argument('parallel_type', choices=['raja', 'agency'], help="Parallelism framework being used.")
+    parser.add_argument('application_type', choices=['fft', 'mmult'], help="Application benchmark being plotted")
+    parser.add_argument('-o', '--output_file', help="Name of the output file")
+    parser.add_argument('-q', '--cali_query_loc', help="Path to cali query executable")
 
-parser = argparse.ArgumentParser()
-parser.add_argument('cali_file', help="The cali file to be analyzed should go here")
-args = parser.parse_args()
+    args = parser.parse_args()
+    if args.parallel_type == 'raja' and args.application_type == 'mmult':
+        print args.cali_query_loc
+        plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
+    else:
+        sys.exit("Parallel framework {} and application {} not yet supported.".format(args.parallel_type, args.application_type))
 
-cali_file = args.cali_file
+def plot_raja_mmult(cali_file, filename, cali_query):
+    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
+    CALI_QUERY = [cali_query, '-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
 
-ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
-CALI_QUERY = [os.path.join('build', 'tpl', 'bin', 'cali-query'),'-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
+    p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
+    out, err = p.communicate()
 
-p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
-out, err = p.communicate()
+    data = {
+        'init': {},
+        'control': {},
+        'OMP': {},
+        'Serial': {}
+    }
 
-data = {
-    'init': {},
-    'control': {},
-    'OMP': {},
-    'Serial': {}
-}
+    for line in out.split():
+        line = dict(map(lambda x: x.split('='), line.split(',')))
+        loop = None
+        time = None
+        mode = None
+        size = None
+        for key, value in line.iteritems():
+            if key == 'time.inclusive.duration':
+                time = int(value)
+            elif key == 'iteration':
+                loop = int(value)
+            elif key == 'size': 
+                size = int(value)
+            else:
+                mode = key
 
-for line in out.split():
-    line = dict(map(lambda x: x.split('='), line.split(',')))
-    loop = None
-    time = None
-    mode = None
-    size = None
-    for key, value in line.iteritems():
-        if key == 'time.inclusive.duration':
-            time = int(value)
-        elif key == 'iteration':
-            loop = int(value)
-        elif key == 'size': 
-            size = int(value)
-        else:
-            mode = key
+        if mode == 'initialization':
+            data['init'][size] = time
+        elif mode == 'control':
+            data['control'][size] = time
+        elif mode:
+            if size not in data[mode]:
+                data[mode][size] = [None] * 10
 
-    if mode == 'initialization':
-        data['init'][size] = time
-    elif mode == 'control':
-        data['control'][size] = time
-    elif mode:
-        if size not in data[mode]:
-            data[mode][size] = [None] * 10
+            if size is not None and loop is not None:
+                data[mode][size][loop] = time
 
-        if size is not None and loop is not None:
-            data[mode][size][loop] = time
+    OMP = data['OMP']
+    control = data['control']
+    Serial = data['Serial']
 
-OMP = data['OMP']
-control = data['control']
-Serial = data['Serial']
+    dat = [[size, control[size], omp, serial] for size in OMP for omp, serial in zip(OMP[size], Serial[size])]
+    dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
+    d = [[size, 
+          control[size], 
+          dataframe[dataframe['Size'] == size]['OMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
+          dataframe[dataframe['Size'] == size]['Serial'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['Serial'])
+         ] for size in sorted(OMP)]
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'Control', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem'])
 
-dat = [[size, control[size], omp, serial] for size in OMP for omp, serial in zip(OMP[size], Serial[size])]
-dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
-d = [[size, 
-      control[size], 
-      dataframe[dataframe['Size'] == size]['OMP'].mean(),
-      stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
-      dataframe[dataframe['Size'] == size]['Serial'].mean(),
-      stats.sem(dataframe[dataframe['Size'] == size]['Serial'])
-     ] for size in sorted(OMP)]
-realDataframe = pd.DataFrame(data=d, columns=['Size', 'Control', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem'])
+    fig = plt.figure()
+    sizes = sorted(OMP)
+    legendNames = []
+    plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']) 
+    legendNames.append('OMP RAJA')
+    plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
+    legendNames.append('Serial RAJA')
+    plt.plot(sizes, control.values(), color='g')
+    legendNames.append('Serial non-RAJA')
+    plt.legend(legendNames, loc='lower right')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('matrix size', fontsize=16)
+    plt.ylabel('time taken', fontsize=16)
+    plt.grid(b=True, which='major', color='k', linestyle='dotted')
+    plt.title('Testing RAJA speed', fontsize=16)
+    plt.savefig(filename)
 
-fig = plt.figure()
-sizes = sorted(OMP)
-legendNames = []
-plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']) 
-legendNames.append('OMP RAJA')
-plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
-legendNames.append('Serial RAJA')
-plt.plot(sizes, control.values(), color='g')
-legendNames.append('Serial non-RAJA')
-plt.legend(legendNames, loc='lower right')
-plt.xscale('log')
-plt.yscale('log')
-plt.xlabel('matrix size', fontsize=16)
-plt.ylabel('time taken', fontsize=16)
-plt.grid(b=True, which='major', color='k', linestyle='dotted')
-plt.title('Testing RAJA speed', fontsize=16)
-plt.savefig('tmp.pdf')
+if __name__ == '__main__':
+    main()

@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 find_package(OpenMP)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++11")
+set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -x cu -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
 include(ExternalProject)
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/tpl)
@@ -28,6 +29,7 @@ else ()
       CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
+        -DRAJA_NVCC_FLAGS=${RAJA_NVCC_FLAGS}
         -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
         -DCMAKE_BUILD_TYPE=Release
         -DRAJA_ENABLE_NESTED=On
@@ -72,6 +74,11 @@ else ()
   if (NOT CALIPER_GIT_REPO)
     set(CALIPER_GIT_REPO https://github.com/LLNL/Caliper.git )
   endif()
+  if (NOT PYTHON_EXECUTABLE)
+    set(PYTHON_ADDITIONAL_VERSIONS "2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7")
+    find_package(PythonInterp)
+  endif()
+
   ExternalProject_Add(
       caliper
       GIT_REPOSITORY ${CALIPER_GIT_REPO}
@@ -99,3 +106,24 @@ endif()
 add_subdirectory(matrix_multiplication)
 add_subdirectory(fft)
 add_subdirectory(dependent_index_sets)
+
+set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
+
+add_custom_command(
+  OUTPUT rajaMmult.cali
+  COMMAND find "${CMAKE_BINARY_DIR}/matrix_multiplication/*.cali" | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+)
+
+add_custom_command(
+  OUTPUT "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult 
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali 
+                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf 
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS rajaMmult.cali
+)
+
+add_custom_target(figures ALL DEPENDS
+  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
+)
+
