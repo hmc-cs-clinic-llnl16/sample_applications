@@ -174,7 +174,14 @@ int main(int argc, char** argv) {
     init.end();
 
     auto control = cali::Annotation("control").begin();
-    auto resultV = mult(control1, control2, rows, cols);
+    std::vector<double> resultV;
+    auto iteration = cali::Annotation("iteration");
+    for (RAJA::Index_type i = 0; i < NUM_TRIALS; ++i) {  
+      std::cout << "Started iteration " << i << " of type control\n"; 
+      iteration.set(i);
+      resultV = mult(control1, control2, rows, cols);
+    }
+    iteration.end();
     control.end();
     try {
       runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);

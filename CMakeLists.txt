@@ -111,7 +111,9 @@ set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 
 add_custom_command(
   OUTPUT rajaMmult.cali
-  COMMAND find "${CMAKE_BINARY_DIR}/matrix_multiplication/*.cali" | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
 )
 
 add_custom_command(
@@ -123,7 +125,7 @@ add_custom_command(
   DEPENDS rajaMmult.cali
 )
 
-add_custom_target(figures ALL DEPENDS
+add_custom_target(figures DEPENDS
   "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
 )
 

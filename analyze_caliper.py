@@ -64,8 +64,6 @@ def plot_raja_mmult(cali_file, filename, cali_query):
 
         if mode == 'initialization':
             data['init'][size] = time
-        elif mode == 'control':
-            data['control'][size] = time
         elif mode:
             if size not in data[mode]:
                 data[mode][size] = [None] * 10
@@ -77,16 +75,17 @@ def plot_raja_mmult(cali_file, filename, cali_query):
     control = data['control']
     Serial = data['Serial']
 
-    dat = [[size, control[size], omp, serial] for size in OMP for omp, serial in zip(OMP[size], Serial[size])]
+    dat = [[size, c, omp, serial] for size in OMP for omp, serial, c in zip(OMP[size], Serial[size], control[size])]
     dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
     d = [[size, 
-          control[size], 
           dataframe[dataframe['Size'] == size]['OMP'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
           dataframe[dataframe['Size'] == size]['Serial'].mean(),
-          stats.sem(dataframe[dataframe['Size'] == size]['Serial'])
+          stats.sem(dataframe[dataframe['Size'] == size]['Serial']),
+          dataframe[dataframe['Size'] == size]['Control'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['Control'])
          ] for size in sorted(OMP)]
-    realDataframe = pd.DataFrame(data=d, columns=['Size', 'Control', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem'])
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem', 'controlmean', 'controlsem'])
 
     fig = plt.figure()
     sizes = sorted(OMP)
@@ -95,8 +94,8 @@ def plot_raja_mmult(cali_file, filename, cali_query):
     legendNames.append('OMP RAJA')
     plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
     legendNames.append('Serial RAJA')
-    plt.plot(sizes, control.values(), color='g')
-    legendNames.append('Serial non-RAJA')
+    plt.errorbar(sizes, realDataframe['controlmean'], color='g', xerr=[0]*len(sizes), yerr=realDataframe['controlsem'])
+    legendNames.append('control')
     plt.legend(legendNames, loc='lower right')
     plt.xscale('log')
     plt.yscale('log')
