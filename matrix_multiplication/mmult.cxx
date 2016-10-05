@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
 
   auto size = cali::Annotation("size");
   for (int sizeIndex = 0; sizeIndex < numSizes; ++sizeIndex) {
-    auto rows = interpolateNumberLinearlyOnLogScale(100, 5000, numSizes, sizeIndex);
+    auto rows = interpolateNumberLinearlyOnLogScale(100, 1000, numSizes, sizeIndex);
     auto cols = rows;
     size.set(rows);
     std::cout << "Starting size " << rows << "\n";
