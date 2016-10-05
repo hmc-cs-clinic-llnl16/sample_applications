@@ -12,84 +12,37 @@
 
 #include "caliper/Annotation.h"
 
-enum Policy {n2ser, n2par, nser, npar, n10ser, n10par};
+enum Policy {ser, par};
 
 template <typename T>
 class Matrix {
     int rows_;
     int cols_;
+    int workers_;
     std::vector<T> data_;
     Policy policy_;
 public:
     Matrix() { }
 
-    Matrix(const int rows, const int cols, const Policy policy, const T& defaultValue = T())
-            : rows_(rows), cols_(cols), data_(rows_ * cols_, defaultValue), policy_(policy) { }
+    Matrix(const int rows, const int cols, const int workers, const Policy policy, const T& defaultValue = T())
+            : rows_(rows), cols_(cols), workers_(workers), data_(rows_ * cols_, defaultValue), policy_(policy) { }
 
     Matrix<T> operator*(Matrix<T>& rhs) {
         assert(cols_ == rhs.rows_);
 
-        auto result = Matrix<T>(rows_, rhs.cols_, policy_, T());
+        auto result = Matrix<T>(rows_, rhs.cols_, workers_, policy_, T());
 
         T* lhs_ptr = data_.data();
         T* rhs_ptr = rhs.data_.data();
         T* result_ptr = result.data_.data();
 
+        int tile_size = rows_/workers_;
+
         switch (policy_) {
-            case n2ser:
-                agency::bulk_invoke(agency::seq(rows_*rhs.cols_),
+            case ser:
+                agency::bulk_invoke(agency::seq(workers_),
                                     [=](agency::sequenced_agent& self) {
-                                        int row = self.index() / rhs.cols_;
-                                        int col = self.index() % rhs.cols_;
-
-                                        for (int k = 0; k < cols_; ++k) {
-                                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
-                                                                                 rhs_ptr[rhs.cols_ * k + col];
-                                        }
-                                    });
-                break;
-            case n2par:
-                agency::bulk_invoke(agency::par(rows_*rhs.cols_),
-                                    [=](agency::parallel_agent& self) {
-                                        int row = self.index() / rhs.cols_;
-                                        int col = self.index() % rhs.cols_;
-
-                                        for (int k = 0; k < cols_; ++k) {
-                                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
-                                                                                 rhs_ptr[rhs.cols_ * k + col];
-                                        }
-                                    });
-                break;
-            case nser:
-                agency::bulk_invoke(agency::seq(rows_),
-                                    [=](agency::sequenced_agent& self) {
-                                        int row = self.index();
-
-                                        for (int col = 0; col < rhs.cols_; ++col) {
-                                            for (int k = 0; k < cols_; ++k) {
-                                                result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
-                                                                                     rhs_ptr[rhs.cols_ * k + col];
-                                            }
-                                        }
-                                    });
-                break;
-            case npar:
-                agency::bulk_invoke(agency::par(rows_),
-                                    [=](agency::parallel_agent& self) {
-                                        int row = self.index();
-
-                                        for (int col = 0; col < rhs.cols_; ++col) {
-                                            for (int k = 0; k < cols_; ++k) {
-                                                result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
-                                                                                     rhs_ptr[rhs.cols_ * k + col];
-                                            }
-                                        }
-                                    });
-                break;
-            case n10ser:
-                agency::bulk_invoke(agency::seq((rows_+9)/10),
-                                    [=](agency::sequenced_agent& self) {
-                                        for (int row = self.index()*10; (row < (self.index()+1)*10) && (row < rows_); ++row) {
+                                        for (int row = self.index()*tile_size; (row < (self.index()+1)*tile_size); ++row) {
                                             for (int col = 0; col < rhs.cols_; ++col) {
                                                 for (int k = 0; k < cols_; ++k) {
                                                     result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
@@ -98,11 +51,19 @@ public:
                                             }
                                         }
                                     });
+                for (int row = workers_*tile_size; (row < rows_); ++row) {
+                    for (int col = 0; col < rhs.cols_; ++col) {
+                        for (int k = 0; k < cols_; ++k) {
+                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
+                                                                 rhs_ptr[rhs.cols_ * k + col];
+                        }
+                    }
+                }
                 break;
-            case n10par:
-                agency::bulk_invoke(agency::par((rows_+9)/10),
+            case par:
+                agency::bulk_invoke(agency::par(workers_),
                                     [=](agency::parallel_agent& self) {
-                                        for (int row = self.index()*10; (row < (self.index()+1)*10) && (row < rows_); ++row) {
+                                        for (int row = self.index()*tile_size; (row < (self.index()+1)*tile_size); ++row) {
                                             for (int col = 0; col < rhs.cols_; ++col) {
                                                 for (int k = 0; k < cols_; ++k) {
                                                     result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
@@ -111,6 +72,14 @@ public:
                                             }
                                         }
                                     });
+                for (int row = workers_*tile_size; (row < rows_); ++row) {
+                    for (int col = 0; col < rhs.cols_; ++col) {
+                        for (int k = 0; k < cols_; ++k) {
+                            result_ptr[rhs.cols_ * row + col] += lhs_ptr[cols_ * row + k] *
+                                                                 rhs_ptr[rhs.cols_ * k + col];
+                        }
+                    }
+                }
 
         }
         return result;
@@ -118,21 +87,18 @@ public:
 
     int getRows() const { return rows_; }
     int getCols() const { return cols_; }
-    char* getPolicyName() {
+
+    const char* getPolicyName() {
+        std::stringstream stringStream;
         switch (policy_) {
-            case n2ser:
-                return "n2Serial";
-            case n2par:
-                return "n2Parallel";
-            case nser:
-                return "nSerial";
-            case npar:
-                return "nParallel";
-            case n10ser:
-                return "n10Serial";
-            case n10par:
-                return "n10Parallel";
+            case ser:
+                stringStream << "Serial";
+                break;
+            case par:
+                stringStream << "Parallel";
         }
+        stringStream << workers_ << "Worker";
+        return stringStream.str().c_str();
     }
 
 
@@ -212,19 +178,19 @@ int main(int argc, char** argv) {
 
     auto size = cali::Annotation("size");
     for (int sizeIndex = 0; sizeIndex < numSizes; ++sizeIndex) {
-        auto rows = interpolateNumberLinearlyOnLogScale(100, 1000, numSizes, sizeIndex);
+        auto rows = interpolateNumberLinearlyOnLogScale(20, 100, numSizes, sizeIndex);
         auto cols = rows;
         size.set(rows);
         std::cout << "Starting size " << rows << "\n";
 
         auto init = cali::Annotation("initialization").begin();
-        auto matrixN2Ser = Matrix<double>(rows, cols, n2ser);
-        auto matrixN2Par = Matrix<double>(rows, cols, n2par);
-        auto matrixNSer = Matrix<double>(rows, cols, nser);
-        auto matrixNPar = Matrix<double>(rows, cols, npar);
-        auto matrixN10Ser = Matrix<double>(rows, cols, n10ser);
-        auto matrixN10Par = Matrix<double>(rows, cols, n10par);
-        auto matrixRight = Matrix<double>(rows, cols, nser);
+        auto matrix1Ser = Matrix<double>(rows, cols, 1, ser);
+        auto matrix1Par = Matrix<double>(rows, cols, 1, par);
+        auto matrix2Ser = Matrix<double>(rows, cols, 4, ser);
+        auto matrix2Par = Matrix<double>(rows, cols, 4, par);
+        auto matrix4Ser = Matrix<double>(rows, cols, 16, ser);
+        auto matrix4Par = Matrix<double>(rows, cols, 16, par);
+        auto matrixRight = Matrix<double>(rows, cols, 1, ser);
 
         auto control1 = std::vector<double>(rows * cols);
         auto control2 = std::vector<double>(rows * cols);
@@ -232,12 +198,12 @@ int main(int argc, char** argv) {
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols; ++j) {
                 double first = dist(gen), second = dist(gen);
-                matrixN2Ser(i, j) = first;
-                matrixN2Par(i, j) = first;
-                matrixNSer(i, j) = first;
-                matrixNPar(i, j) = first;
-                matrixN10Ser(i, j) = first;
-                matrixN10Par(i, j) = first;
+                matrix1Ser(i, j) = first;
+                matrix1Par(i, j) = first;
+                matrix2Ser(i, j) = first;
+                matrix2Par(i, j) = first;
+                matrix4Ser(i, j) = first;
+                matrix4Par(i, j) = first;
                 control1[i * cols + j] = first;
 
                 matrixRight(i, j) = second;
@@ -257,58 +223,58 @@ int main(int argc, char** argv) {
         iteration.end();
 
         try {
-            runTimingTest(matrixN2Ser, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix1Ser, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n^2 worker serial matrix multiplication without error.\n";
+        std::cout << "Completed 1 worker serial matrix multiplication without error.\n";
 
         try {
-            runTimingTest(matrixN2Par, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix1Par, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n^2 worker parallel matrix multiplication without error.\n";
+        std::cout << "Completed 1 worker parallel matrix multiplication without error.\n";
 
         try {
-            runTimingTest(matrixNSer, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix2Ser, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n worker serial matrix multiplication without error.\n";
+        std::cout << "Completed 2 worker serial matrix multiplication without error.\n";
 
         try {
-            runTimingTest(matrixNPar, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix2Par, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n worker parallel matrix multiplication without error.\n";
+        std::cout << "Completed 2 worker parallel matrix multiplication without error.\n";
 
         try {
-            runTimingTest(matrixN10Ser, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix4Ser, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n/10 worker serial matrix multiplication without error.\n";
+        std::cout << "Completed 4 worker serial matrix multiplication without error.\n";
 
         try {
-            runTimingTest(matrixN10Par, matrixRight, resultV, NUM_TRIALS);
+            runTimingTest(matrix4Par, matrixRight, resultV, NUM_TRIALS);
         } catch (std::runtime_error e) {
             std::cout << e.what() << std::endl;
             return 1;
         }
 
-        std::cout << "Completed n/10 worker parallel matrix multiplication without error." << std::endl;
+        std::cout << "Completed 4 worker parallel matrix multiplication without error." << std::endl;
     }
     size.end();
 }
