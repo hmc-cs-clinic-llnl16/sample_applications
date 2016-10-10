@@ -119,26 +119,4 @@ add_subdirectory(matrix_multiplication)
 add_subdirectory(fft)
 add_subdirectory(fft2d)
 add_subdirectory(dependent_index_sets)
-
-set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
-
-add_custom_command(
-  OUTPUT rajaMmult.cali
-  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
-  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
-)
-
-add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
-  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult 
-                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali 
-                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf 
-                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
-  DEPENDS rajaMmult.cali
-)
-
-add_custom_target(figures DEPENDS
-  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
-)
-
+add_subdirectory(fft_agency)
