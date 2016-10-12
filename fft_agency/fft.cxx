@@ -49,11 +49,7 @@ std::complex<double>* fftseq(double* x, int N, int s)
     }
 
     return bin;
-
 }
-
-
-
 
 template <typename Policy>
 std::complex<double>* fft(double* x, int N, int s)
@@ -129,7 +125,7 @@ struct ParallelPolicy {
 int main() {
     
     size_t startSamples = pow(2,8);
-    size_t endSamples = pow(2, 12);
+    size_t endSamples = pow(2, 14);
     int numTrials = 10;
 
     auto size = cali::Annotation("size");
