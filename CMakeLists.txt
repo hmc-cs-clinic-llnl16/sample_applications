@@ -9,7 +9,7 @@ find_package(OpenMP)
 
 set(RAJA_COMPILER "RAJA_COMPILER_GNU" CACHE STRING "")
 set(CMAKE_CXX_COMPILER "g++" CACHE PATH "")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++14 -fext-numeric-literals")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fpermissive" CACHE STRING "")
@@ -121,6 +121,7 @@ add_subdirectory(fft2d)
 add_subdirectory(dependent_index_sets)
 
 set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
 
 add_custom_command(
   OUTPUT rajaMmult.cali
@@ -131,14 +132,30 @@ add_custom_command(
 
 add_custom_command(
   OUTPUT "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
-  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult 
-                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali 
-                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf 
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajaMmult.cali
 )
 
-add_custom_target(figures DEPENDS
-  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
+add_custom_command(
+  OUTPUT rajafft2d.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fft2d.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/fft2d
 )
 
+add_custom_command(
+  OUTPUT "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft2d
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
+                 -o ${FIGURES_DIRECTORY}/rajafft2d.pdf
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS rajafft2d.cali
+)
+
+add_custom_target(figures DEPENDS
+  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf" 
+  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+)
