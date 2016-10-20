@@ -8,26 +8,29 @@
 const double PI = acos(-1);
 
 //This is a sequential implementation of a FFT using
-void fftOmp(double* x, std::complex<double>* bins, int N, int s)
+void fftSeq(double* x, std::complex<double>* bins, int N, int s)
 {
+
     //Base case if we have a DFT of size 1
     if (N == 1){
         bins[0] = std::complex<double> (x[0],0);
 
     } else {
+        
+        //Determin the fft of the two different halves
         if (s == 1){
             auto forTime = cali::Annotation("largeFor").begin();
-            RAJA::forall<RAJA::omp_parallel_for_exec>(0, 2, [&](int j)
+            RAJA::forall<RAJA::seq_exec>(0, 2, [&](int j)
             {   
-                fftOmp(x+j*s,bins + j*N/2, N/2, 2*s); 
+                fftSeq(x+j*s,bins + j*N/2, N/2, 2*s); 
             });
             forTime.end();
 
         }else{
-            fftOmp(x,bins, N/2, 2*s);
-            fftOmp(x+s,bins + N/2, N/2, 2*s); 
+            fftSeq(x,bins, N/2, 2*s);
+            fftSeq(x+s,bins + N/2, N/2, 2*s); 
         }
-        //Determin the fft of the two different halves
+        
          
         
 
@@ -42,13 +45,12 @@ void fftOmp(double* x, std::complex<double>* bins, int N, int s)
             bins[k+N/2] = t - exp(a*I)*bins[k + N/2];
         });
     }
-
 }
 
 int main() {
     
     //The number of samples which were collected(must be a power of 2)
-    int numberSamples = pow(2, 20);
+    int numberSamples = pow(2, 16);
     //The rate at which the samples were taken in Hz
     double sampleRate = 40.0;
 
@@ -60,7 +62,6 @@ int main() {
 
     std::complex<double>* bins = new std::complex<double>[numberSamples];
 
-
     for (int i = 0; i < numberSamples; ++i)
     {
         sine[i] = 20*sin(2*PI * inputFreq * (i / sampleRate));
@@ -68,17 +69,13 @@ int main() {
 
     auto totalTime = cali::Annotation("totalFFT").begin();
     //get the bins from the fft
-    fftOmp(sine, bins, numberSamples, 1);
+    fftSeq(sine, bins, numberSamples, 1);
     totalTime.end();
-
+    
     //Print out the results of the fft but adjust the numbers so they correspond 
     for (int i = 0; i < numberSamples; ++i){
         std::cout << (sampleRate/numberSamples)*i <<": " << std::abs(bins[i]) << std::endl;
     }
 
-    delete bins;
-
     return 0;
 }
-
-
