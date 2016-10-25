@@ -21,20 +21,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--cali_file', help="The cali file to be analyzed should go here")
     parser.add_argument('parallel_type', choices=['raja', 'agency'], help="Parallelism framework being used.")
-    parser.add_argument('application_type', choices=['fft', 'mmult'], help="Application benchmark being plotted")
+    parser.add_argument('application_type', choices=['fft', 'mmult', 'fft2d'], help="Application benchmark being plotted")
     parser.add_argument('-o', '--output_file', help="Name of the output file")
     parser.add_argument('-q', '--cali_query_loc', help="Path to cali query executable")
 
     args = parser.parse_args()
     if args.parallel_type == 'raja' and args.application_type == 'mmult':
-        print args.cali_query_loc
+        plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
+    elif args.parallel_type == 'raja' and args.application_type == 'fft2d':
         plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
     else:
         sys.exit("Parallel framework {} and application {} not yet supported.".format(args.parallel_type, args.application_type))
 
+def _get_cali_query(cali_query, annotations, cali_file):
+    return [cali_query, '-e', '--print-attributes={}'.format(annotations), cali_file]
+
+
 def plot_raja_mmult(cali_file, filename, cali_query):
     ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
-    CALI_QUERY = [cali_query, '-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
+    CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
 
     p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
     out, err = p.communicate()
@@ -57,7 +62,7 @@ def plot_raja_mmult(cali_file, filename, cali_query):
                 time = int(value)
             elif key == 'iteration':
                 loop = int(value)
-            elif key == 'size': 
+            elif key == 'size':
                 size = int(value)
             else:
                 mode = key
@@ -77,7 +82,7 @@ def plot_raja_mmult(cali_file, filename, cali_query):
 
     dat = [[size, c, omp, serial] for size in OMP for omp, serial, c in zip(OMP[size], Serial[size], control[size])]
     dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
-    d = [[size, 
+    d = [[size,
           dataframe[dataframe['Size'] == size]['OMP'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
           dataframe[dataframe['Size'] == size]['Serial'].mean(),
@@ -90,20 +95,19 @@ def plot_raja_mmult(cali_file, filename, cali_query):
     fig = plt.figure()
     sizes = sorted(OMP)
     legendNames = []
-    plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']) 
+    plt.errorbar(sizes, realDataframe['OMPmean']/realDataframe['controlmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']/realDataframe['controlmean'])
     legendNames.append('OMP RAJA')
-    plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
+    plt.errorbar(sizes, realDataframe['Serialmean']/realDataframe['controlmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']/realDataframe['controlmean'])
     legendNames.append('Serial RAJA')
-    plt.errorbar(sizes, realDataframe['controlmean'], color='g', xerr=[0]*len(sizes), yerr=realDataframe['controlsem'])
-    legendNames.append('control')
-    plt.legend(legendNames, loc='lower right')
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.xlabel('matrix size', fontsize=16)
-    plt.ylabel('time taken', fontsize=16)
+    plt.errorbar(sizes, realDataframe['controlmean']/realDataframe['controlmean'], color='g', xerr=[0]*len(sizes), yerr=realDataframe['controlsem']/realDataframe['controlmean'])
+    legendNames.append('Control')
+    plt.legend(legendNames, loc='center right')
+    plt.xlabel('Matrix Size', fontsize=16)
+    plt.ylabel('Relative Time', fontsize=16)
     plt.grid(b=True, which='major', color='k', linestyle='dotted')
-    plt.title('Testing RAJA speed', fontsize=16)
+    plt.title('Matrix Multiplication Speedup (24 cores)', fontsize=22)
     plt.savefig(filename)
+
 
 if __name__ == '__main__':
     main()

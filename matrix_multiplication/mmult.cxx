@@ -23,7 +23,7 @@ class Matrix {
 public:
   static constexpr char* name = Policy::name;
   Matrix() { }
-  
+
   Matrix(const RAJA::Index_type rows, const RAJA::Index_type cols, const T& defaultValue = T())
       : rows_(rows), cols_(cols), data_(rows_ * cols_, defaultValue) { }
 
@@ -110,11 +110,11 @@ int interpolateNumberLinearlyOnLogScale(
 }
 
 template <typename MATRIX>
-void runTimingText(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
+void runTimingTest(MATRIX& left, MATRIX& right, const std::vector<double>& result, const unsigned numTrials) {
     cali::Annotation::Guard timing_test(cali::Annotation(MATRIX::name).begin());
     auto iteration = cali::Annotation("iteration");
-    for (RAJA::Index_type i = 0; i < numTrials; ++i) {  
-      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "\n"; 
+    for (RAJA::Index_type i = 0; i < numTrials; ++i) {
+      std::cout << "Started iteration " << i << " of type " << MATRIX::name << "\n";
       iteration.set(i);
       auto actualResult = left * right;
       iteration.set("test");
@@ -136,7 +136,7 @@ void checkResult(const MATRIX& actual, const std::vector<double>& expected) {
     }
 }
 
-int main(int argc, char** argv) { 
+int main(int argc, char** argv) {
   constexpr static std::size_t numSizes = 10;
   constexpr static std::size_t NUM_TRIALS = 10;
 
@@ -176,15 +176,15 @@ int main(int argc, char** argv) {
     auto control = cali::Annotation("control").begin();
     std::vector<double> resultV;
     auto iteration = cali::Annotation("iteration");
-    for (RAJA::Index_type i = 0; i < NUM_TRIALS; ++i) {  
-      std::cout << "Started iteration " << i << " of type control\n"; 
+    for (RAJA::Index_type i = 0; i < NUM_TRIALS; ++i) {
+      std::cout << "Started iteration " << i << " of type control\n";
       iteration.set(i);
       resultV = mult(control1, control2, rows, cols);
     }
     iteration.end();
     control.end();
     try {
-      runTimingText(matrix1, matrix2, resultV, NUM_TRIALS);
+      runTimingTest(matrix1, matrix2, resultV, NUM_TRIALS);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
     std::cout << "Completed matrix multiplication serial style without error.\n";
 
     try {
-      runTimingText(matrix3, matrix4, resultV, NUM_TRIALS);
+      runTimingTest(matrix3, matrix4, resultV, NUM_TRIALS);
     } catch (std::runtime_error e) {
       std::cout << e.what() << std::endl;
       return 1;
@@ -203,4 +203,3 @@ int main(int argc, char** argv) {
   }
   size.end();
 }
-
