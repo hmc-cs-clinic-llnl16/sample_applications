@@ -47,6 +47,7 @@ else ()
         -DRAJA_ENABLE_NESTED=On
         -DRAJA_ENABLE_TESTS=Off
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/tpl
+	-DCMAKE_CXX_STANDARD=11
       LOG_DOWNLOAD ON
       LOG_CONFIGURE ON
       LOG_BUILD ON)
@@ -124,28 +125,9 @@ set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
 
 add_custom_command(
-  OUTPUT ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf 
+  OUTPUT rajaMmult.cali
   COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-  COMMAND ${CMAKE_BINARY_DIR}/tpl/bin/cali-query 
-          -f "%[10]time.inclusive.duration%,%[10]iteration%,%[10]size%" 
-          -s "iteration:size:time.inclusive.duration:OMP"
-          -o ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultOMP.csv
-          ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-  COMMAND ${CMAKE_BINARY_DIR}/tpl/bin/cali-query 
-          -f "%[10]time.inclusive.duration%,%[10]iteration%,%[10]size%" 
-          -s "iteration:size:time.inclusive.duration:Serial"
-          -o ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultSerial.csv
-          ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-  COMMAND ${CMAKE_BINARY_DIR}/tpl/bin/cali-query 
-          -f "%[10]time.inclusive.duration%,%[10]iteration%,%[10]size%" 
-          -s "iteration:size:time.inclusive.duration:control"
-          -o ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultControl.csv
-          ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-  COMMAND python ${CMAKE_SOURCE_DIR}/analyze_caliper.py raja mmult
-          --omp-file ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultOMP.csv
-          --serial-file ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultSerial.csv
-          --control-file ${CMAKE_BINARY_DIR}/caliper_files/rajaMmultControl.csv
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
 )
 
