@@ -30,9 +30,9 @@ def main():
     if args.parallel_type == 'raja' and args.application_type == 'mmult':
         plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
     elif args.parallel_type == 'raja' and args.application_type == 'fft2d':
-        plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
+        plot_raja_fft(args.cali_file, args.output_file, args.cali_query_loc, "2D FFT Performance")
     elif args.parallel_type == 'raja' and args.application_type == 'fft':
-        plot_raja_fft(args.cali_file, args.output_file, args.cali_query_loc)
+        plot_raja_fft(args.cali_file, args.output_file, args.cali_query_loc, "1D FFT Performance")
     else:
         sys.exit("Parallel framework {} and application {} not yet supported.".format(args.parallel_type, args.application_type))
 
@@ -117,8 +117,7 @@ def plot_raja_mmult(cali_file, baseFileName, cali_query, legend=True, title=True
                 "{}_PERM_{}_Depth_{}.pdf".format(baseFileName, perm, depth))
             plt.savefig(filename)
 
-
-def plot_raja_fft(cali_file, baseFileName, cali_query, legend=True, title=True):
+def plot_raja_fft(cali_file, baseFileName, cali_query, title, legend=True):          
     ANNOTATIONS = ':'.join(['iteration', 'size', 'mode', 'time.inclusive.duration'])
     CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
     p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
@@ -165,7 +164,7 @@ def plot_raja_fft(cali_file, baseFileName, cali_query, legend=True, title=True):
     if legend:
       plt.legend(legendNames, loc='best', fontsize=12)
     if title:
-      plt.title('FFT Performance', fontsize=22)
+      plt.title(title, fontsize=22)
     plt.xlabel('Signal Length', fontsize=16)
     plt.ylabel('Time Taken (ms)', fontsize=16)
     plt.yscale('log')
@@ -176,6 +175,7 @@ def plot_raja_fft(cali_file, baseFileName, cali_query, legend=True, title=True):
         'figs',
         "{}.pdf".format(baseFileName))
     plt.savefig(filename)
+
 
 if __name__ == '__main__':
     main()

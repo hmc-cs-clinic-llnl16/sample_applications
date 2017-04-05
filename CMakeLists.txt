@@ -144,7 +144,7 @@ add_custom_command(
   OUTPUT mmult_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication
+                 -o rajaMatrixMultiplication
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajaMmult.cali
 )
@@ -160,7 +160,7 @@ add_custom_command(
   OUTPUT 1dfft_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
-                 -o ${FIGURES_DIRECTORY}/rajaFft1D.pdf
+                 -o rajaFft1D
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajafft1d.cali
 )
@@ -173,10 +173,10 @@ add_custom_command(
 )
 
 add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  OUTPUT 2dfft_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft2d
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
-                 -o ${FIGURES_DIRECTORY}/rajafft2d.pdf
+                 -o rajaFft2D
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajafft2d.cali
 )
@@ -184,5 +184,5 @@ add_custom_command(
 add_custom_target(figures DEPENDS
   mmult_figures
   1dfft_figures
-#  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  2dfft_figures
 )

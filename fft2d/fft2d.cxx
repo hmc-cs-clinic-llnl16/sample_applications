@@ -24,16 +24,17 @@ void checkResult(const std::complex<double> * actual, const std::complex<double>
 
 template <typename Functor>
 void runTimingTest(Functor f, double* x, int L, int M, int numTrials, const std::complex<double> * expectedResult, const std::string& name) {
-  cali::Annotation::Guard timingTest(cali::Annotation(name.c_str()).begin());
+  cali::Annotation mode("mode");
+  mode.set(name.c_str());
   auto iteration = cali::Annotation("iteration");
   for (RAJA::Index_type i = 0; i < numTrials; ++i) {
-    std::cout << "Started iteration " << i << " of type " << name << "\n";
     iteration.set(i);
     auto actualResult = f(x, L, M);
     iteration.set("test");
     checkResult(actualResult, expectedResult, L*M);
   }
   iteration.end();
+  mode.end();
 }
 
 int main() {
@@ -49,43 +50,30 @@ int main() {
       size.set(numSamples);
       std::cout << "Starting size " << numSamples << "\n";
 
-      auto init = cali::Annotation("initialization").begin();
       std::vector<double> sine(numSamples);
       for (int i = 0; i < numSamples; ++i) {
         sine[i] = 20*sin(2*PI * inputFrequency * (i / sampleRate));
       }
-      init.end();
 
       const int L = 4;
       const int M = 1 << 6;
 
-      auto control = cali::Annotation("control").begin();
+      auto control = cali::Annotation("mode");
+      control.set("control");
       std::complex<double>* controlBins;
       auto iteration = cali::Annotation("iteration");
       for (RAJA::Index_type i = 0; i < NUM_TRIALS; ++i) {
-        std::cout << "Started control iteration " << i << "\n";
         iteration.set(i);
         controlBins = fft2dSequential(&sine[0], L, M);
       }
       iteration.end();
       control.end();
+      std::cout << "Completed control without error.\n";
 
-      try {
-        runTimingTest(fft2dRajaSequential, &sine[0], L, M, NUM_TRIALS, controlBins, "Serial");
-      } catch (std::runtime_error e) {
-        std::cout << e.what() << std::endl;
-        return 1;
-      }
-
+      runTimingTest(fft2dRajaSequential, &sine[0], L, M, NUM_TRIALS, controlBins, "Serial");
       std::cout << "Completed 2D FFT sequential style without error.\n";
 
-      try {
-        runTimingTest(fft2dRajaOmp, &sine[0], L, M, NUM_TRIALS, controlBins, "OMP");
-      } catch (std::runtime_error e) {
-        std::cout << e.what() << std::endl;
-        return 1;
-      }
-
+      runTimingTest(fft2dRajaOmp, &sine[0], L, M, NUM_TRIALS, controlBins, "OMP");
       std::cout << "Completed 2D FFT omp style without error.\n";
     }
     size.end();
