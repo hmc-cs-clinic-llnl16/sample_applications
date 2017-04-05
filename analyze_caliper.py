@@ -31,9 +31,10 @@ def main():
         plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
     elif args.parallel_type == 'raja' and args.application_type == 'fft2d':
         plot_raja_mmult(args.cali_file, args.output_file, args.cali_query_loc)
+    elif args.parallel_type == 'raja' and args.application_type == 'fft':
+        plot_raja_fft(args.cali_file, args.output_file, args.cali_query_loc)
     else:
         sys.exit("Parallel framework {} and application {} not yet supported.".format(args.parallel_type, args.application_type))
-
 
 def mean(it):
     it = list(it)
@@ -116,6 +117,65 @@ def plot_raja_mmult(cali_file, baseFileName, cali_query, legend=True, title=True
                 "{}_PERM_{}_Depth_{}.pdf".format(baseFileName, perm, depth))
             plt.savefig(filename)
 
+
+def plot_raja_fft(cali_file, baseFileName, cali_query, legend=True, title=True):
+    ANNOTATIONS = ':'.join(['iteration', 'size', 'mode', 'time.inclusive.duration'])
+    CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
+    p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
+    out, err = p.communicate()
+
+    data = {}
+
+    for line in out.split():
+        line = dict(map(lambda x: x.split('='), line.split(',')))
+        if len(line) != 4:
+            continue
+
+        time = int(line['time.inclusive.duration'])
+        mode = line['mode']
+        size = int(line['size'])
+
+        if mode not in data:
+            data[mode] = {}
+        if size not in data[mode]:
+            data[mode][size] = []
+
+        data[mode][size].append(time)
+
+    colors = ['r', 'b', 'k', 'g', 'c']
+    markers = ('o', 'v', 's', 'h', '*')
+    namelist = (('OpenMP', 'RAJA w/ OpenMP'),
+                ('Serial', 'RAJA Serial'),
+                ('Agency', 'RAJA w/ Agency'),
+                ('AgencyOmp', 'RAJA w/ Agency w/ OpenMP'),
+                ('control', 'Control Serial'))
+    names = { key: (name, colors[i], markers[i]) 
+              for i, (key, name) in enumerate(namelist) }
+
+    fig = plt.figure()
+    legendNames = []
+    for i, (mode, datum) in enumerate(data.iteritems()):
+        sizes = sorted(datum.keys())
+        xerr = [0] * len(sizes)
+        means = [mean(datum[size]) for size in sizes]
+        sems = [sem(datum[size]) for size in sizes]
+        name, color, marker = names[mode]
+        legendNames.append(name)
+        plt.errorbar(sizes, means, xerr=xerr, yerr=sems, marker=marker, color=color)
+    if legend:
+      plt.legend(legendNames, loc='best', fontsize=12)
+    if title:
+      plt.title('FFT Performance', fontsize=22)
+    plt.xlabel('Signal Length', fontsize=16)
+    plt.ylabel('Time Taken (ms)', fontsize=16)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.grid(b=True, which='major', color='k', linestyle='dotted')
+    filename = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'figs',
+        "{}.pdf".format(baseFileName))
+    plt.savefig(filename)
 
 if __name__ == '__main__':
     main()

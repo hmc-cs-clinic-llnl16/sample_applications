@@ -69,6 +69,7 @@ else ()
   add_dependencies(RAJA      raja)
 endif()
 
+
 if(RAJA_ENABLE_CUDA)
   find_package(CUDA)
   if(CUDA_FOUND)
@@ -149,6 +150,22 @@ add_custom_command(
 )
 
 add_custom_command(
+  OUTPUT rajafft1d.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fftTranspose.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/fft
+)
+
+add_custom_command(
+  OUTPUT 1dfft_figures
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+                 -o ${FIGURES_DIRECTORY}/rajaFft1D.pdf
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS rajafft1d.cali
+)
+
+add_custom_command(
   OUTPUT rajafft2d.cali
   COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fft2d.exe
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
@@ -166,6 +183,6 @@ add_custom_command(
 
 add_custom_target(figures DEPENDS
   mmult_figures
-  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf" 
+  1dfft_figures
 #  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
 )
