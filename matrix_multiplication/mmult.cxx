@@ -39,12 +39,9 @@ public:
     RAJA::forallN<typename Policy::EXEC>(
       RAJA::RangeSegment(0, rows_),
       RAJA::RangeSegment(0, cols_),
-      [=](RAJA::Index_type row, RAJA::Index_type col) {
-        double result = 0;
-        for (RAJA::Index_type k = 0; k < rows_; ++k) {
-          result += rhsView(row, k) * lhsView(k, col);
-        }
-        resultView(row, col) = result;
+      RAJA::RangeSegment(0, cols_),
+      [=](RAJA::Index_type row, RAJA::Index_type col, RAJA::Index_type k) {
+        resultView(row, col) += rhsView(row, k) * lhsView(k, col);
       }
     );
 
@@ -65,8 +62,10 @@ public:
 
 struct SerialPolicy {
   using EXEC = RAJA::NestedPolicy<
-    RAJA::ExecList<RAJA::seq_exec, RAJA::seq_exec>,
-    RAJA::Permute<RAJA::PERM_IJ>
+    RAJA::ExecList<RAJA::simd_exec, 
+                   RAJA::simd_exec,
+                   RAJA::simd_exec>,
+    RAJA::Permute<RAJA::PERM_IJK>
   >;
   using VIEW = RAJA::View<double, RAJA::Layout<int, RAJA::PERM_IJ, int, int>>;
   static constexpr char* name = "Serial";
@@ -74,11 +73,35 @@ struct SerialPolicy {
 
 struct OmpPolicy {
   using EXEC = RAJA::NestedPolicy<
-    RAJA::ExecList<RAJA::omp_parallel_for_exec, RAJA::seq_exec>,
-    RAJA::Permute<RAJA::PERM_IJ>
+    RAJA::ExecList<RAJA::omp_parallel_for_exec, 
+                   RAJA::simd_exec,
+                   RAJA::simd_exec>,
+    RAJA::Permute<RAJA::PERM_IJK>
   >;
   using VIEW = RAJA::View<double, RAJA::Layout<int, RAJA::PERM_IJ, int, int>>;
   static constexpr char* name = "OMP";
+};
+
+struct AgencyPolicy {
+  using EXEC = RAJA::NestedPolicy<
+    RAJA::ExecList<RAJA::agency_parallel_exec, 
+                   RAJA::simd_exec,
+                   RAJA::simd_exec>,
+    RAJA::Permute<RAJA::PERM_IJK>
+  >;
+  using VIEW = RAJA::View<double, RAJA::Layout<int, RAJA::PERM_IJ, int, int>>;
+  static constexpr char* name = "Agency";
+};
+
+struct AgencyOMPPolicy {
+  using EXEC = RAJA::NestedPolicy<
+    RAJA::ExecList<RAJA::agency_omp_parallel_exec, 
+                   RAJA::simd_exec,
+                   RAJA::simd_exec>,
+    RAJA::Permute<RAJA::PERM_IJK>
+  >;
+  using VIEW = RAJA::View<double, RAJA::Layout<int, RAJA::PERM_IJ, int, int>>;
+  static constexpr char* name = "AgencyOMP";
 };
 
 template <typename T>
@@ -97,6 +120,27 @@ std::vector<T> mult(const std::vector<T>& lhs, const std::vector<T>& rhs, const 
 
   return resultV;
 }
+
+template <typename T>
+std::vector<T> multOMP(const std::vector<T>& lhs,
+                       const std::vector<T>& rhs,
+                       const std::size_t rows,
+                       const std::size_t cols) {
+  std::vector<T> resultV(rows * cols, 0);
+
+  #pragma omp parallel for
+  for (std::size_t row = 0; row < rows; ++row) {
+    for (std::size_t col = 0; col < cols; ++col) {
+      double result = 0;
+      for (std::size_t k = 0; k < rows; ++k) {
+        result += lhs[row * cols + k] * rhs[k * cols + col];
+      }
+      resultV[row * cols + col] = result;
+    }
+  }
+
+  return resultV;
+}                       
 
 int interpolateNumberLinearlyOnLogScale(
     const int lower, const int upper,
@@ -156,18 +200,32 @@ int main(int argc, char** argv) {
     auto matrix2 = Matrix<double, SerialPolicy>(rows, cols);
     auto matrix3 = Matrix<double, OmpPolicy>(rows, cols);
     auto matrix4 = Matrix<double, OmpPolicy>(rows, cols);
+    auto matrix5 = Matrix<double, AgencyPolicy>(rows, cols);
+    auto matrix6 = Matrix<double, AgencyPolicy>(rows, cols);
+    auto matrix7 = Matrix<double, AgencyOMPPolicy>(rows, cols);
+    auto matrix8 = Matrix<double, AgencyOMPPolicy>(rows, cols);
 
     auto control1 = std::vector<double>(rows * cols);
     auto control2 = std::vector<double>(rows * cols);
+
+    auto rawOMP1 = std::vector<double>(rows * cols);
+    auto rawOMP2 = std::vector<double>(rows * cols);
 
     for (std::size_t i = 0; i < rows; ++i) {
       for (std::size_t j = 0; j < cols; ++j) {
         double first = dist(gen), second = dist(gen);
         matrix1(i, j) = first;
         matrix3(i, j) = first;
+        matrix5(i, j) = first;
+        matrix7(i, j) = first;
+        rawOMP1[i * cols + j] = first;
         control1[i * cols + j] = first;
+
         matrix2(i, j) = second;
         matrix4(i, j) = second;
+        matrix6(i, j) = second;
+        matrix8(i, j) = second;
+        rawOMP2[i * cols + j] = second;
         control2[i * cols + j] = second;
       }
     }
@@ -183,6 +241,18 @@ int main(int argc, char** argv) {
     }
     iteration.end();
     control.end();
+
+    auto omp = cali::Annotation("rawOMP").begin();
+    std::vector<double> ompResult;
+    auto ompiteration = cali::Annotation("iteration");
+    for (RAJA::Index_type i = 0; i < NUM_TRIALS; ++i) {
+      std::cout << "Started iteration " << i << "of type raw OpenMP\n";
+      iteration.set(i);
+      ompResult = multOMP(rawOMP1, rawOMP2, rows, cols);
+    }
+    ompiteration.end();
+    omp.end();
+
     try {
       runTimingTest(matrix1, matrix2, resultV, NUM_TRIALS);
     } catch (std::runtime_error e) {
@@ -200,6 +270,24 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "Completed matrix multiplication omp style without error." << std::endl;
+
+    try {
+      runTimingTest(matrix5, matrix6, resultV, NUM_TRIALS);
+    } catch (std::runtime_error e) {
+      std::cout << e.what() << std::endl;
+      return 1;
+    }
+
+    std::cout << "Completed matrix multiplication agency style without error." << std::endl;
+
+    try {
+      runTimingTest(matrix7, matrix8, resultV, NUM_TRIALS);
+    } catch (std::runtime_error e) {
+      std::cout << e.what() << std::endl;
+      return 1;
+    }
+
+    std::cout << "Completed matrix multiplication agency_omp style without error." << std::endl;
   }
   size.end();
 }

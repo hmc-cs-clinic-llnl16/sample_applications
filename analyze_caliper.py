@@ -14,6 +14,7 @@ import numpy as np
 import scipy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import pandas as pd
 from scipy import stats
 
@@ -38,7 +39,7 @@ def _get_cali_query(cali_query, annotations, cali_file):
 
 
 def plot_raja_mmult(cali_file, filename, cali_query):
-    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
+    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'Agency', 'AgencyOMP', 'rawOMP', 'time.inclusive.duration'])
     CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
 
     p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
@@ -48,7 +49,10 @@ def plot_raja_mmult(cali_file, filename, cali_query):
         'init': {},
         'control': {},
         'OMP': {},
-        'Serial': {}
+        'rawOMP': {},
+        'Serial': {},
+        'Agency': {},
+        'AgencyOMP': {}
     }
 
     for line in out.split():
@@ -77,35 +81,57 @@ def plot_raja_mmult(cali_file, filename, cali_query):
                 data[mode][size][loop] = time
 
     OMP = data['OMP']
+    rawOMP = data['rawOMP']
     control = data['control']
     Serial = data['Serial']
+    Agency = data['Agency']
+    Agency_omp = data['AgencyOMP']
 
-    dat = [[size, c, omp, serial] for size in OMP for omp, serial, c in zip(OMP[size], Serial[size], control[size])]
-    dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
+    dat = [[size, c, omp, serial, agency, agency_omp, raw] 
+            for size in OMP 
+            for omp, serial, c, agency, agency_omp, raw in zip(
+                OMP[size], Serial[size], control[size], Agency[size], Agency_omp[size], rawOMP[size])
+          ]
+    dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial', 'Agency', 'AgencyOMP', 'rawOMP'])
     d = [[size,
           dataframe[dataframe['Size'] == size]['OMP'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
           dataframe[dataframe['Size'] == size]['Serial'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['Serial']),
           dataframe[dataframe['Size'] == size]['Control'].mean(),
-          stats.sem(dataframe[dataframe['Size'] == size]['Control'])
+          stats.sem(dataframe[dataframe['Size'] == size]['Control']),
+          dataframe[dataframe['Size'] == size]['Agency'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['Agency']),
+          dataframe[dataframe['Size'] == size]['AgencyOMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['AgencyOMP']),
+          dataframe[dataframe['Size'] == size]['rawOMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['rawOMP']),
          ] for size in sorted(OMP)]
-    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem', 'controlmean', 'controlsem'])
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem', 'controlmean', 'controlsem', 'agencymean', 'agencysem', 'agencyompmean', 'agencyompsem', 'rawmean', 'rawsem'])
+
 
     fig = plt.figure()
     sizes = sorted(OMP)
+    data = [(realDataframe['OMPmean'], realDataframe['OMPsem'], 'RAJA w/ OpenMP'),
+            (realDataframe['Serialmean'], realDataframe['Serialsem'], 'RAJA Serial'),
+            (realDataframe['agencymean'], realDataframe['agencysem'], 'RAJA w/ Agency'),
+            (realDataframe['agencyompmean'], realDataframe['agencyompsem'], 'RAJA w/ AgencyOMP'),
+            (realDataframe['rawmean'], realDataframe['rawsem'], 'Raw OpenMP'),
+            (realDataframe['controlmean'], realDataframe['controlsem'], 'Control')]
+    colors = cm.jet(np.linspace(0, 1, len(data)))
+    markers = ('o', 'v', '^', '<', '>', '8', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X')
     legendNames = []
-    plt.errorbar(sizes, realDataframe['OMPmean']/realDataframe['controlmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']/realDataframe['controlmean'])
-    legendNames.append('OMP RAJA')
-    plt.errorbar(sizes, realDataframe['Serialmean']/realDataframe['controlmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']/realDataframe['controlmean'])
-    legendNames.append('Serial RAJA')
-    plt.errorbar(sizes, realDataframe['controlmean']/realDataframe['controlmean'], color='g', xerr=[0]*len(sizes), yerr=realDataframe['controlsem']/realDataframe['controlmean'])
-    legendNames.append('Control')
-    plt.legend(legendNames, loc='center right')
+    xerr = [0] * len(sizes)
+    for i, (meanData, errData, legendName) in enumerate(data):
+        plt.errorbar(sizes, meanData, color=colors[i], xerr=xerr, yerr=errData, marker=markers[i])
+        legendNames.append(legendName)
+
+    plt.legend(legendNames, loc='best', fontsize=12)
     plt.xlabel('Matrix Size', fontsize=16)
-    plt.ylabel('Relative Time', fontsize=16)
+    plt.ylabel('Relative Time Taken (ms)', fontsize=16)
+    plt.yscale('log')
     plt.grid(b=True, which='major', color='k', linestyle='dotted')
-    plt.title('Matrix Multiplication Speedup (24 cores)', fontsize=22)
+    #plt.title('Matrix Multiplication Relative Performance (72 cores)', fontsize=22)
     plt.savefig(filename)
 
 
