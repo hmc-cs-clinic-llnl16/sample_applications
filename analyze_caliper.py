@@ -14,6 +14,7 @@ import numpy as np
 import scipy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import pandas as pd
 from scipy import stats
 
@@ -24,17 +25,19 @@ args = parser.parse_args()
 
 cali_file = args.cali_file
 
-ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'control', 'Serial', 'OMP', 'time.inclusive.duration'])
-CALI_QUERY = [os.path.join('build', 'tpl', 'bin', 'cali-query'),'-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
+ANNOTATIONS = ':'.join(['iteration', 'control', 'size', 'Serial', 'OpenMP', 'Agency', 'AgencyOmp', 'time.inclusive.duration'])
+CALI_QUERY = [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'tpl', 'bin', 'cali-query'),'-e', '--print-attributes={}'.format(ANNOTATIONS), cali_file]
 
+print CALI_QUERY
 p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
 out, err = p.communicate()
 
 data = {
-    'init': {},
     'control': {},
-    'OMP': {},
-    'Serial': {}
+    'OpenMP': {},
+    'Serial': {},
+    'Agency': {},
+    'AgencyOmp': {}
 }
 
 for line in out.split():
@@ -50,49 +53,60 @@ for line in out.split():
             loop = int(value)
         elif key == 'size': 
             size = int(value)
-        else:
+        elif key in data:
             mode = key
 
-    if mode == 'initialization':
-        data['init'][size] = time
-    elif mode == 'control':
-        data['control'][size] = time
-    elif mode:
-        if size not in data[mode]:
-            data[mode][size] = [None] * 10
+    if mode in data:
+      if size not in data[mode]:
+          data[mode][size] = [time]
+      else:
+          data[mode][size].append(time)
 
-        if size is not None and loop is not None:
-            data[mode][size][loop] = time
-
-OMP = data['OMP']
+OMP = data['OpenMP']
 control = data['control']
 Serial = data['Serial']
+Agency = data['Agency']
+AgencyOmp = data['AgencyOmp']
 
-dat = [[size, control[size], omp, serial] for size in OMP for omp, serial in zip(OMP[size], Serial[size])]
-dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial'])
+dat = [[size, c, omp, serial, agency, aomp] 
+       for size in OMP for omp, c, serial, agency, aomp
+       in zip(OMP[size], control[size], Serial[size], Agency[size], AgencyOmp[size])]
+dataframe = pd.DataFrame(data=dat, columns=['Size', 'Control', 'OMP', 'Serial', 'Agency', 'AgencyOmp'])
 d = [[size, 
-      control[size], 
+      dataframe[dataframe['Size'] == size]['Control'].mean(),
+      stats.sem(dataframe[dataframe['Size'] == size]['Control']),
       dataframe[dataframe['Size'] == size]['OMP'].mean(),
       stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
       dataframe[dataframe['Size'] == size]['Serial'].mean(),
-      stats.sem(dataframe[dataframe['Size'] == size]['Serial'])
+      stats.sem(dataframe[dataframe['Size'] == size]['Serial']),
+      dataframe[dataframe['Size'] == size]['Agency'].mean(),
+      stats.sem(dataframe[dataframe['Size'] == size]['Agency']),
+      dataframe[dataframe['Size'] == size]['AgencyOmp'].mean(),
+      stats.sem(dataframe[dataframe['Size'] == size]['AgencyOmp'])
      ] for size in sorted(OMP)]
-realDataframe = pd.DataFrame(data=d, columns=['Size', 'Control', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem'])
+realDataframe = pd.DataFrame(data=d, columns=['Size', 'Controlmean', 'Controlsem', 'OMPmean', 'OMPsem', 'Serialmean', 'Serialsem', 'Agencymean', 'Agencysem', 'Aompmean', 'Aompsem'])
 
 fig = plt.figure()
 sizes = sorted(OMP)
+methods = (('Control', 'Controlmean', 'Controlsem'),
+           ('RAJA w/ OpenMP', 'OMPmean', 'OMPsem'),
+           ('RAJA Serial', 'Serialmean', 'Serialsem'),
+           ('RAJA w/ Agency', 'Agencymean', 'Agencysem'),
+           ('RAJA w/ Agency w/ OpenMP', 'Aompmean', 'Aompsem'))
+colors = cm.jet(np.linspace(0, 1, len(methods)))
+markers = ('o', 'v', '^', '<', '>', '8', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X')
+xerr=[0]*len(sizes)
 legendNames = []
-plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem']) 
-legendNames.append('OMP RAJA')
-plt.errorbar(sizes, realDataframe['Serialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['Serialsem']) 
-legendNames.append('Serial RAJA')
-plt.plot(sizes, control.values(), color='g')
-legendNames.append('Serial non-RAJA')
-plt.legend(legendNames, loc='lower right')
+
+for i, (legendName, meanKey, semKey) in enumerate(methods):
+    plt.errorbar(sizes, realDataframe[meanKey], color=colors[i], xerr=xerr, yerr=realDataframe[semKey], marker=markers[i])
+    legendNames.append(legendName)
+
+plt.legend(legendNames, loc='best', fontsize=12)
 plt.xscale('log')
 plt.yscale('log')
-plt.xlabel('matrix size', fontsize=16)
-plt.ylabel('time taken', fontsize=16)
+plt.xlabel('Signal length', fontsize=16)
+plt.ylabel('Time taken (ms)', fontsize=16)
 plt.grid(b=True, which='major', color='k', linestyle='dotted')
-plt.title('Testing RAJA speed', fontsize=16)
-plt.savefig('tmp.pdf')
+# plt.title('Testing RAJA speed', fontsize=16)
+plt.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'figs', 'rajaFft1D.pdf'))

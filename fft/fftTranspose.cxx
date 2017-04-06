@@ -33,9 +33,6 @@ void fft(std::complex<double>* x, std::complex<double>* bins, int N, int s)
             fft(x+s,bins + N/2, N/2, 2*s); 
         }
         
-         
-        
-
         //Make the term I which is a complex double = sqrt -1
         std::complex<double> I = -1.0;
         I = sqrt(I) ;
@@ -51,11 +48,12 @@ void fft(std::complex<double>* x, std::complex<double>* bins, int N, int s)
 
 //This function takes in a single array in column major format and calcuates
 //the fft of this sequence
+template <typename Policy>
 void cfft(std::complex<double>* x, std::complex<double>* bins, int n)
 {   
     
     //Use pointer arithmatic to offset which part of the array to work on
-    RAJA::forall<RAJA::omp_parallel_for_exec>(0, n, [&](int k)
+    RAJA::forall<Policy>(0, n, [&](int k)
         {   
 
             fft(x + (n*k), bins + (n*k),n, 1);
@@ -63,10 +61,11 @@ void cfft(std::complex<double>* x, std::complex<double>* bins, int n)
 }
 
 //This function transposes the 1D array assumeing it represents an nxn matrix
+template <typename Policy>
 void transpose(std::complex<double>* x, std::complex<double>* xTrans,int n)
 {
     //Use raja so we can run multiple outter loops at the same time
-    RAJA::forall<RAJA::omp_parallel_for_exec>(0, n, [&](int k)
+    RAJA::forall<Policy>(0, n, [&](int k)
         {   
             for(int m = 0; m < n; ++m){
                 xTrans[n*k + m] = x[n*m + k];
@@ -75,10 +74,11 @@ void transpose(std::complex<double>* x, std::complex<double>* xTrans,int n)
     
 }
 //This function multiply the imput by its corresponding twiddle factors
+template <typename Policy>
 void twiddle(std::complex<double>* x, std::complex<double>* xTwid, std::complex<double>* factors, int n)
 {
     //Multiple every term by the twiddle factor   
-    RAJA::forall<RAJA::omp_parallel_for_exec>(0, n*n, [&](int k)
+    RAJA::forall<Policy>(0, n*n, [&](int k)
         {
             xTwid[k] = x[k]*factors[k];
         }); 
@@ -91,26 +91,26 @@ void genTwid(int n, std::complex<double>* factors)
     //Get the omega n factor
     std::complex<double> wn = std::complex<double> (cos((2.0*PI)/(n*n)), -sin((2.0*PI)/(n*n)));
 
-    for (int k = 0; k < n*n; ++k){
-        factors[k] = pow(wn,(((k%n) * (k/n))));
-    }
-
-
+    RAJA::forall<RAJA::omp_parallel_for_exec>(0, n*n, [&](int k)
+      {
+          factors[k] = pow(wn, (k%n) * (k/n));
+      });
 }
 
 //This is an implementation of a parallel version of fft
+template <typename Policy>
 void sixStepFFT(std::complex<double>* x, std::complex<double>* bins, int numberSamples, 
     int n, std::complex<double>* factors)
 {   
 
     //Transpose the matrix and put the result into t1
     std::complex<double>* t1 = new std::complex<double>[numberSamples];
-    transpose(x,t1,n);
+    transpose<Policy>(x,t1,n);
 
 
     //Calculate the collumn fft and put it into c1
     std::complex<double>* c1 = new std::complex<double>[numberSamples];
-    cfft(t1, c1, n);
+    cfft<Policy>(t1, c1, n);
 
     delete t1;
 
@@ -118,28 +118,54 @@ void sixStepFFT(std::complex<double>* x, std::complex<double>* bins, int numberS
 
     //Multiply the array by the twiddle factors
     std::complex<double>* twid = new std::complex<double>[numberSamples];
-    twiddle(c1, twid, factors, n);
+    twiddle<Policy>(c1, twid, factors, n);
 
     delete c1;
 
     //Transpose the matrix again
     std::complex<double>* t2 = new std::complex<double>[numberSamples];
-    transpose(twid, t2,n);
+    transpose<Policy>(twid, t2,n);
 
     delete twid;
 
     //Calculate the new collumn fft and put it into c1
     std::complex<double>* c2 = new std::complex<double>[numberSamples];
-    cfft(t2, c2,n);
+    cfft<Policy>(t2, c2,n);
 
     delete t2;
     //Now we have the last transpose which will give us the final results
-    transpose(c2,bins,n); 
+    transpose<Policy>(c2,bins,n); 
 
     delete c2;
 
 }
 
+void fftSeq(std::complex<double>* x, std::complex<double>* bins, int N, int s)
+{
+
+    //Base case if we have a DFT of size 1
+    if (N == 1){
+        bins[0] = x[0];
+    } else {
+        
+        //Determin the fft of the two different halves
+        fftSeq(x,bins, N/2, 2*s);
+        
+        fftSeq(x+s,bins + N/2, N/2, 2*s);
+
+        //Make the term I which is a complex double = sqrt -1
+        std::complex<double> I = -1.0;
+        I = sqrt(I) ;
+        for (int k = 0; k < N/2; ++k)
+        {   
+            std::complex<double> a = (-2*k*PI)/N;
+            std::complex<double> t = bins[k];
+            bins[k] = t + exp(a*I)*bins[k + N/2];
+            bins[k+N/2] = t - exp(a*I)*bins[k + N/2];
+        }
+    }
+
+}
 
 int main() {
 
@@ -149,46 +175,18 @@ int main() {
     //make sure this is less than half of sample rate
     double inputFreq = 10.2;
 
-    //get time for seqeuntial
-    cali::Annotation::Guard timingTest(cali::Annotation("TimingTest").begin());
-    auto iteration = cali::Annotation("Sequential");
-    for(int k = 16; k < 22; k+=2){
-        iteration.set(k);
+    const int NUM_TRIALS = 10;
 
-        int numberSamples = pow(2, k);
-        //number of samples = n*n
-        int n = pow(2, k/2);
+    auto sizeAnn = cali::Annotation("size");
+    for (int size = 16; size < 24; ++size){// += 2) {
+        int numberSamples = pow(2, size);
+        int n = pow(2, size/2);
+        sizeAnn.set(numberSamples);
+        std::cout << "Starting size " << size << std::endl;
 
-        //Make input and output arrays
         std::complex<double>* x = new std::complex<double>[numberSamples];
         std::complex<double>* bins = new std::complex<double>[numberSamples];
 
-        //Fill in the input array
-        for (int i = 0; i < numberSamples; ++i)
-        {
-            x[i] = std::complex<double> (3.0*sin(2.0*PI * inputFreq * (i / sampleRate)), 0.0);
-        }
-
-        //Get time for sequential FFT
-        fft(x,bins, numberSamples,1);
-
-        delete x;
-        delete bins;
-    }
-
-    //get Time for parallel
-    iteration = cali::Annotation("Parallel");
-    for(int k = 16; k < 22; k+=2){
-        iteration.set(k);
-        int numberSamples = pow(2, k);
-        //number of samples = n*n
-        int n = pow(2, k/2);
-
-        //Make input and output arrays
-        std::complex<double>* x = new std::complex<double>[numberSamples];
-        std::complex<double>* bins = new std::complex<double>[numberSamples];
-
-        //Fill in the input array
         for (int i = 0; i < numberSamples; ++i)
         {
             x[i] = std::complex<double> (3.0*sin(2.0*PI * inputFreq * (i / sampleRate)), 0.0);
@@ -198,20 +196,45 @@ int main() {
         std::complex<double>* factors = new std::complex<double>[numberSamples];
         genTwid(n,factors);
 
-        //get the bins from the fft
-        sixStepFFT(x, bins, numberSamples, n, factors);
+        auto iteration = cali::Annotation("iteration");
+        for (int trialId = 0; trialId < NUM_TRIALS; ++trialId) {
+            std::cout << "Beginning iteration " << trialId << std::endl;
+            iteration.set(trialId);
+
+            std::cout << "control\n";
+            auto control = cali::Annotation("control");
+            control.begin();
+            fftSeq(x, bins, numberSamples, 1);
+            control.end();
+
+            std::cout << "Serial\n";
+            auto sequential = cali::Annotation("Serial");
+            sequential.begin();
+            fft(x,bins, numberSamples,1);
+            sequential.end();
+
+            std::cout << "Omp\n";
+            auto omp = cali::Annotation("OpenMP");
+            omp.begin();
+            sixStepFFT<RAJA::omp_parallel_for_exec>(x, bins, numberSamples, n, factors);
+            omp.end();
+
+            std::cout << "Agency\n";
+            auto agency = cali::Annotation("Agency");
+            agency.begin();
+            sixStepFFT<RAJA::agency_parallel_exec>(x, bins, numberSamples, n, factors);
+            agency.end();
+
+            std::cout <<"aomp\n";
+            auto agencyomp = cali::Annotation("AgencyOmp");
+            agencyomp.begin();
+            sixStepFFT<RAJA::agency_omp_parallel_exec>(x, bins, numberSamples, n, factors);
+            agencyomp.end();
+        }
+        iteration.end();
 
         delete x;
         delete bins;
     }
-    
-    //Print out the results of the fft but adjust the numbers so they correspond 
-    // for (int i = 0; i < numberSamples; ++i){
-    //     std::cout << (sampleRate/numberSamples)*i <<": " << std::abs(bins[i]) << std::endl;
-    // }
-
-
-
-    
-    return 0;
+    sizeAnn.end();
 }

@@ -19,16 +19,17 @@ else ()
     set(RAJA_GIT_TAG develop)
   endif()
   if (NOT RAJA_GIT_REPO)
-    set(RAJA_GIT_REPO https://github.com/LLNL/RAJA.git )
+    set(RAJA_GIT_REPO https://github.com/hmc-cs-clinic-llnl16/RAJA.git )
   endif()
   ExternalProject_Add(
       raja
       GIT_REPOSITORY ${RAJA_GIT_REPO}
       GIT_TAG ${RAJA_GIT_TAG}
-      CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
-        -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
+      CMAKE_ARGS 
+     # -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+     #   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+     #   -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
+     #   -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
         -DCMAKE_BUILD_TYPE=Release
         -DRAJA_ENABLE_NESTED=On
         -DRAJA_ENABLE_TESTS=Off
@@ -40,6 +41,7 @@ else ()
   ExternalProject_Get_Property(raja install_dir)
   set(RAJA_DIR ${install_dir}/share/cmake/raja/)
   include_directories(${install_dir}/include)
+  include_directories(${install_dir}/src/raja/extra/agency)
 
   add_library(RAJA      UNKNOWN IMPORTED)
   set_target_properties(RAJA PROPERTIES
@@ -47,6 +49,7 @@ else ()
   )
   add_dependencies(RAJA      raja)
 endif()
+
 
 if(RAJA_ENABLE_CUDA)
   find_package(CUDA)
@@ -91,7 +94,7 @@ else ()
 
   add_library(CALIPER      UNKNOWN IMPORTED)
   set_target_properties(CALIPER PROPERTIES
-    IMPORTED_LOCATION ${install_dir}/lib/libcaliper.so
+    IMPORTED_LOCATION ${install_dir}/lib64/libcaliper.so
   )
   add_dependencies(CALIPER caliper)
 endif()
