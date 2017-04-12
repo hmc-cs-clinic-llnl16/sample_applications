@@ -21,6 +21,7 @@ set(RAJA_COHERENCE_BLOCK_SIZE 64 CACHE INT "")
 set(RAJA_HOST_CONFIG_LOADED On CACHE Bool "")
 set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -x cu -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
+include_directories(/g/g19/nickgonz/newRAJA/RAJA/extra/agency)
 include(ExternalProject)
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/tpl)
 
@@ -29,10 +30,10 @@ if (RAJA_DIR)
   include_directories(${RAJA_INCLUDE_DIR})
 else ()
   if (NOT RAJA_GIT_TAG)
-    set(RAJA_GIT_TAG develop)
+    set(RAJA_GIT_TAG feature/ngonzalez/reducer_agency)
   endif()
   if (NOT RAJA_GIT_REPO)
-    set(RAJA_GIT_REPO https://github.com/LLNL/RAJA.git )
+    set(RAJA_GIT_REPO https://github.com/hmc-cs-clinic-llnl16/RAJA)
   endif()
   ExternalProject_Add(
       raja
@@ -78,7 +79,7 @@ if (CALIPER_DIR)
   include_directories(${caliper_INCLUDE_DIR})
   add_library(CALIPER UNKNOWN IMPORTED)
   set_target_properties(CALIPER PROPERTIES
-    IMPORTED_LOCATION ${caliper_LIB_DIR}/lib/libcaliper.so
+    IMPORTED_LOCATION ${caliper_LIB_DIR}/lib64/libcaliper.so
   )
 else ()
   if (NOT CALIPER_GIT_TAG)
@@ -111,7 +112,7 @@ else ()
 
   add_library(CALIPER      UNKNOWN IMPORTED)
   set_target_properties(CALIPER PROPERTIES
-    IMPORTED_LOCATION ${install_dir}/lib/libcaliper.so
+    IMPORTED_LOCATION ${install_dir}/lib64/libcaliper.so
   )
   add_dependencies(CALIPER caliper)
 endif()
@@ -120,6 +121,7 @@ add_subdirectory(matrix_multiplication)
 add_subdirectory(fft)
 add_subdirectory(fft2d)
 add_subdirectory(dependent_index_sets)
+add_subdirectory(reducerTests)
 
 set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
@@ -160,3 +162,4 @@ add_custom_target(figures DEPENDS
   "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf" 
   "${FIGURES_DIRECTORY}/rajafft2d.pdf"
 )
+
