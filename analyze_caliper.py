@@ -112,7 +112,7 @@ def plot_raja_mmult(cali_file, filename, cali_query):
 
 
 def plot_raja_reducer(cali_file, filename, cali_query):
-    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'baseline', 'RajaSerial', 'OMP','AgencyParallel','AgencySerial', 'time.inclusive.duration'])
+    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'baseline', 'RajaSerial', 'OMP','AgencyParallel','AgencySerial','RawAgency' ,'time.inclusive.duration'])
     CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
 
     p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
@@ -124,7 +124,8 @@ def plot_raja_reducer(cali_file, filename, cali_query):
         'OMP': {},
         'RajaSerial': {},
         'AgencyParallel': {},
-        'AgencySerial': {}
+        'AgencySerial': {},
+        'RawAgency' :{}
 
     }
 
@@ -158,10 +159,11 @@ def plot_raja_reducer(cali_file, filename, cali_query):
     Serial = data['RajaSerial']
     AgencyParallel = data['AgencyParallel']
     AgencySerial = data['AgencySerial']
+    RawAgency = data['RawAgency']
 
 
-    dat = [[size, c, omp, serial, agp, ags] for size in OMP for omp, serial, c, agp, ags in zip(OMP[size], Serial[size], control[size], AgencyParallel[size], AgencySerial[size])]
-    dataframe = pd.DataFrame(data=dat, columns=['Size', 'baseline', 'OMP', 'RajaSerial', 'AgencyParallel', 'AgencySerial'])
+    dat = [[size, c, omp, serial, agp, ags, ra] for size in OMP for omp, serial, c, agp, ags, ra in zip(OMP[size], Serial[size], control[size], AgencyParallel[size], AgencySerial[size], RawAgency[size])]
+    dataframe = pd.DataFrame(data=dat, columns=['Size', 'baseline', 'OMP', 'RajaSerial', 'AgencyParallel', 'AgencySerial','RawAgency'])
     d = [[size,
           dataframe[dataframe['Size'] == size]['OMP'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
@@ -172,9 +174,11 @@ def plot_raja_reducer(cali_file, filename, cali_query):
           dataframe[dataframe['Size'] == size]['AgencyParallel'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['AgencyParallel']),
           dataframe[dataframe['Size'] == size]['AgencySerial'].mean(),
-          stats.sem(dataframe[dataframe['Size'] == size]['AgencySerial'])
+          stats.sem(dataframe[dataframe['Size'] == size]['AgencySerial']),
+          dataframe[dataframe['Size'] == size]['RawAgency'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['RawAgency'])
          ] for size in sorted(OMP)]
-    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'RajaSerialmean', 'RajaSerialsem', 'baselinemean', 'baselinesem','AgencyParallelmean','AgencyParallelsem','AgencySerialmean', 'AgencySerialsem'])
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'RajaSerialmean', 'RajaSerialsem', 'baselinemean', 'baselinesem','AgencyParallelmean','AgencyParallelsem','AgencySerialmean', 'AgencySerialsem','RawAgencymean', 'RawAgencysem'])
 
     fig = plt.figure()
     sizes = sorted(OMP)
@@ -189,6 +193,8 @@ def plot_raja_reducer(cali_file, filename, cali_query):
     legendNames.append('Serial Agency RAJA')
     plt.errorbar(sizes, realDataframe['AgencyParallelmean'], color='m', xerr=[0]*len(sizes), yerr=realDataframe['AgencyParallelsem'])
     legendNames.append('Parallel Agency RAJA')
+    plt.errorbar(sizes, realDataframe['RawAgencymean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['RawAgencysem'])
+    legendNames.append('Raw Agency')
     plt.legend(legendNames, loc='best', fontsize=12)
     plt.xlabel('Reduction Size', fontsize=16)
     plt.ylabel('Absolute Time', fontsize=16)

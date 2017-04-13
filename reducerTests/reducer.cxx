@@ -1,6 +1,7 @@
 #include <iostream>
 #include <math.h>
 
+#include "agencyReducer.hxx"
 #include "RAJA/RAJA.hxx"
 #include "RAJA/MemUtils_CPU.hxx"
 #include "caliper/Annotation.h"
@@ -55,6 +56,23 @@ double agencySerial(double* numberArray, int currNum){
 	return (double) reducer.get();
 }
 
+double rawAgency(double* numberArray, int currNum){
+	int num_concurrent = 16;
+	int num_sequenced = currNum / num_concurrent;
+  
+	AgencyReduceSum sum = AgencyReduceSum(0.0, num_concurrent);
+
+	using namespace agency;
+	bulk_invoke(con(num_concurrent, seq(num_sequenced)), [&](concurrent_group<sequenced_agent>& self){
+		g_thread_index = self.outer().index();
+
+		int linear_index = self.rank();
+
+		sum += numberArray[linear_index];
+	});
+	return (double) sum;
+}
+
 void checkResult(double truth, double test, const std::string& name){
 	if(std::fabs(truth - test) > 0.1){
 		std::cout << "Wrong value encountered when reduceing using "  << name << std::endl;
@@ -72,7 +90,7 @@ void runTimingTest(Functor f, double* numberArray , int currNum, int numTrials, 
     iteration.set(i);
     auto actualResult = f(numberArray, currNum);
     iteration.set("test");
-    checkResult(actualResult, expectedResult, name.c_str() );
+    checkResult(expectedResult, actualResult, name.c_str() );
   }
   iteration.end();
 }
@@ -83,7 +101,7 @@ int main(){
 
 	auto size = cali::Annotation("size");
 	//For all of the different sizes
-	for (int i = 0; i < 5; ++i){
+	for (int i = 0; i < 7; ++i){
 		int currNum = testSet[i];
 		double* numberArray = new double[currNum];
 		double answer = (currNum * (currNum - 1.0)) / 2.0;
@@ -110,6 +128,9 @@ int main(){
 
 		//Agency Serial
 		runTimingTest(agencySerial, numberArray, currNum, numTrials, answer, "AgencySerial");
+
+		//Raw Agency Reducer
+		runTimingTest(rawAgency, numberArray, currNum, numTrials, answer, "RawAgency");
 	}
 	size.end();
 
