@@ -14,7 +14,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mavx -std=c++11 
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Ofast -mavx -std=c++11 -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fpermissive" CACHE STRING "")
 if (NOT RAJA_ENABLE_CUDA)
-    set(RAJA_ENABLE_CUDA On CACHE BOOL "")
+    set(RAJA_ENABLE_CUDA Off CACHE BOOL "")
 endif()
 set(RAJA_ENABLE_AGENCY On CACHE BOOL "")
 set(RAJA_RANGE_ALIGN 4 CACHE INT "")
@@ -50,7 +50,7 @@ else ()
          -DCMAKE_BUILD_TYPE=Release
          -DRAJA_ENABLE_NESTED=On
          -DRAJA_ENABLE_TESTS=Off
-         -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}#${CMAKE_BINARY_DIR}/tpl
+         -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
          -DCMAKE_CXX_STANDARD=11
       LOG_DOWNLOAD ON
       LOG_CONFIGURE ON
@@ -71,6 +71,7 @@ else ()
   add_dependencies(RAJA      raja)
 endif()
 
+
 if(RAJA_ENABLE_CUDA)
   find_package(CUDA)
   if(CUDA_FOUND)
@@ -85,6 +86,7 @@ if (CALIPER_DIR)
   find_package(CALIPER QUIET)
   include_directories(${caliper_INCLUDE_DIR})
   add_library(CALIPER UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${caliper_LIB_DIR}/lib64/libcaliper.so
   )
@@ -118,6 +120,7 @@ else ()
   include_directories(${install_dir}/include)
 
   add_library(CALIPER      UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${install_dir}/lib64/libcaliper.so
   )
@@ -125,37 +128,29 @@ else ()
 endif()
 
 add_subdirectory(matrix_multiplication)
-#add_subdirectory(fft)
-#add_subdirectory(fft2d)
-#add_subdirectory(dependent_index_sets)
+add_subdirectory(fft)
+add_subdirectory(fft2d)
+add_subdirectory(dependent_index_sets)
 
 set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
 
+add_custom_command(
+  OUTPUT rajaMmult.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
+)
 if (NOT RAJA_ENABLE_CUDA)
-  add_custom_command(
-    OUTPUT rajaMmult.cali
-    COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
-    COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
-  )
-
   add_custom_command(
     OUTPUT mmult_figures
     COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
                    -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-                   -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf
+                   -o rajaMatrixMultiplication.pdf
                    -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
     DEPENDS rajaMmult.cali
   )
 else()
-  add_custom_command(
-    OUTPUT rajaMmult.cali
-    COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
-    COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
-  )
-
   add_custom_command(
     OUTPUT mmult_figures
     COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmultgpu
@@ -167,6 +162,22 @@ else()
 endif()
 
 add_custom_command(
+  OUTPUT rajafft1d.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fftTranspose.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/fft
+)
+
+add_custom_command(
+  OUTPUT 1dfft_figures
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+                 -o rajaFft1D
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS rajafft1d.cali
+)
+
+add_custom_command(
   OUTPUT rajafft2d.cali
   COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fft2d.exe
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
@@ -174,15 +185,16 @@ add_custom_command(
 )
 
 add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  OUTPUT 2dfft_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft2d
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
-                 -o ${FIGURES_DIRECTORY}/rajafft2d.pdf
+                 -o rajaFft2D
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajafft2d.cali
 )
 
 add_custom_target(figures DEPENDS
+  1dfft_figures
+  2dfft_figures
   mmult_figures
-#  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
 )
