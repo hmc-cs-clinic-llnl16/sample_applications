@@ -13,7 +13,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++14 -fext-num
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fpermissive" CACHE STRING "")
-set(RAJA_ENABLE_OPENMP On CACHE BOOL "")
+set(RAJA_ENABLE_CUDA Off CACHE BOOL "")
 set(RAJA_ENABLE_AGENCY On CACHE BOOL "")
 set(RAJA_RANGE_ALIGN 4 CACHE INT "")
 set(RAJA_RANGE_MIN_LENGTH 32 CACHE INT "")
@@ -40,16 +40,16 @@ else ()
       GIT_REPOSITORY ${RAJA_GIT_REPO}
       GIT_TAG ${RAJA_GIT_TAG}
       CMAKE_ARGS 
-       #  -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-       #  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-       #  -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
-       #  -DRAJA_NVCC_FLAGS=${RAJA_NVCC_FLAGS}
-       #  -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
-        -DCMAKE_BUILD_TYPE=Release
-        -DRAJA_ENABLE_NESTED=On
-        -DRAJA_ENABLE_TESTS=Off
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}#${CMAKE_BINARY_DIR}/tpl
-	-DCMAKE_CXX_STANDARD=11
+         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+         -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
+         -DRAJA_NVCC_FLAGS=${RAJA_NVCC_FLAGS}
+         -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
+         -DCMAKE_BUILD_TYPE=Release
+         -DRAJA_ENABLE_NESTED=On
+         -DRAJA_ENABLE_TESTS=Off
+         -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+         -DCMAKE_CXX_STANDARD=11
       LOG_DOWNLOAD ON
       LOG_CONFIGURE ON
       LOG_BUILD ON)
@@ -83,6 +83,7 @@ if (CALIPER_DIR)
   find_package(CALIPER QUIET)
   include_directories(${caliper_INCLUDE_DIR})
   add_library(CALIPER UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${caliper_LIB_DIR}/lib64/libcaliper.so
   )
@@ -116,6 +117,7 @@ else ()
   include_directories(${install_dir}/include)
 
   add_library(CALIPER      UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${install_dir}/lib64/libcaliper.so
   )
@@ -138,10 +140,10 @@ add_custom_command(
 )
 
 add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
+  OUTPUT mmult_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf
+                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajaMmult.cali
 )
@@ -163,6 +165,7 @@ add_custom_command(
 )
 
 add_custom_target(figures DEPENDS
+  mmult_figures
   "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf" 
 #  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
 )
