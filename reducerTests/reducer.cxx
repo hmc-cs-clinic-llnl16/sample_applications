@@ -6,7 +6,7 @@
 #include "RAJA/MemUtils_CPU.hxx"
 #include "caliper/Annotation.h"
 
-const int maxNum =  20000000;
+const int maxNum =  200000;
 
 double baseline(double* numberArray, int currNum){
 	double sum = 0;

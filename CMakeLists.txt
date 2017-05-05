@@ -139,6 +139,22 @@ set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
 
 add_custom_command(
+  OUTPUT rajaReduce.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./reducer.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaReduce.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/reducerTests
+)
+
+add_custom_command(
+    OUTPUT reducer_figures
+    COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja reducer
+                   -f ${CMAKE_BINARY_DIR}/caliper_files/rajaReduce.cali
+                   -o rajaReduce.pdf
+                   -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+    DEPENDS rajaReduce.cali
+)
+
+add_custom_command(
   OUTPUT rajaMmult.cali
   COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
@@ -213,9 +229,10 @@ add_custom_command(
 )
 
 add_custom_target(figures DEPENDS
-  1dfft_figures
-  2dfft_figures
-  mmult_figures
   dependentBench_figures
+  2dfft_figures
+  reducer_figures
+  1dfft_figures
+  mmult_figures
 )
 
