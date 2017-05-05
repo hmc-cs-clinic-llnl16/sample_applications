@@ -9,17 +9,20 @@ find_package(OpenMP)
 
 set(RAJA_COMPILER "RAJA_COMPILER_GNU" CACHE STRING "")
 set(CMAKE_CXX_COMPILER "g++" CACHE PATH "")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++14 -fext-numeric-literals")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Ofast -mavx -finline-functions -finline-limit=20000" CACHE STRING "")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -std=c++11 -fext-numeric-literals")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mavx -std=c++11 -finline-functions -finline-limit=20000" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Ofast -mavx -std=c++11 -finline-functions -finline-limit=20000" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fpermissive" CACHE STRING "")
-set(RAJA_ENABLE_OPENMP On CACHE BOOL "")
+if (NOT RAJA_ENABLE_CUDA)
+    set(RAJA_ENABLE_CUDA Off CACHE BOOL "")
+endif()
+set(RAJA_ENABLE_AGENCY On CACHE BOOL "")
 set(RAJA_RANGE_ALIGN 4 CACHE INT "")
 set(RAJA_RANGE_MIN_LENGTH 32 CACHE INT "")
 set(RAJA_DATA_ALIGN 64 CACHE INT "")
 set(RAJA_COHERENCE_BLOCK_SIZE 64 CACHE INT "")
 set(RAJA_HOST_CONFIG_LOADED On CACHE Bool "")
-set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -x cu -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
+set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
 include_directories(/g/g19/nickgonz/newRAJA/RAJA/extra/agency)
 include(ExternalProject)
@@ -30,25 +33,27 @@ if (RAJA_DIR)
   include_directories(${RAJA_INCLUDE_DIR})
 else ()
   if (NOT RAJA_GIT_TAG)
-    set(RAJA_GIT_TAG feature/ngonzalez/reducer_agency)
+    set(RAJA_GIT_TAG develop)
   endif()
   if (NOT RAJA_GIT_REPO)
-    set(RAJA_GIT_REPO https://github.com/hmc-cs-clinic-llnl16/RAJA)
+    set(RAJA_GIT_REPO https://github.com/hmc-cs-clinic-llnl16/RAJA.git )
+
   endif()
   ExternalProject_Add(
       raja
       GIT_REPOSITORY ${RAJA_GIT_REPO}
       GIT_TAG ${RAJA_GIT_TAG}
-      CMAKE_ARGS -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
-        -DRAJA_NVCC_FLAGS=${RAJA_NVCC_FLAGS}
-        -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
-        -DCMAKE_BUILD_TYPE=Release
-        -DRAJA_ENABLE_NESTED=On
-        -DRAJA_ENABLE_TESTS=Off
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/tpl
-	-DCMAKE_CXX_STANDARD=11
+      CMAKE_ARGS 
+         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+         -DRAJA_ENABLE_CUDA=${RAJA_ENABLE_CUDA}
+         -DRAJA_NVCC_FLAGS=${RAJA_NVCC_FLAGS}
+         -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_TOOLKIT_ROOT_DIR}
+         -DCMAKE_BUILD_TYPE=Release
+         -DRAJA_ENABLE_NESTED=On
+         -DRAJA_ENABLE_TESTS=Off
+         -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+         -DCMAKE_CXX_STANDARD=11
       LOG_DOWNLOAD ON
       LOG_CONFIGURE ON
       LOG_BUILD ON)
@@ -56,6 +61,10 @@ else ()
   ExternalProject_Get_Property(raja install_dir)
   set(RAJA_DIR ${install_dir}/share/cmake/raja/)
   include_directories(${install_dir}/include)
+  if(RAJA_ENABLE_AGENCY)
+      set(AGENCY_INCLUDE_DIR ${install_dir}/src/raja/extra/agency)
+      include_directories(${AGENCY_INCLUDE_DIR})
+  endif()
 
   add_library(RAJA      UNKNOWN IMPORTED)
   set_target_properties(RAJA PROPERTIES
@@ -63,6 +72,7 @@ else ()
   )
   add_dependencies(RAJA      raja)
 endif()
+
 
 if(RAJA_ENABLE_CUDA)
   find_package(CUDA)
@@ -78,6 +88,7 @@ if (CALIPER_DIR)
   find_package(CALIPER QUIET)
   include_directories(${caliper_INCLUDE_DIR})
   add_library(CALIPER UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${caliper_LIB_DIR}/lib64/libcaliper.so
   )
@@ -111,6 +122,7 @@ else ()
   include_directories(${install_dir}/include)
 
   add_library(CALIPER      UNKNOWN IMPORTED)
+  # This directory may change to /lib/libcaliper.so on some machines
   set_target_properties(CALIPER PROPERTIES
     IMPORTED_LOCATION ${install_dir}/lib64/libcaliper.so
   )
@@ -132,14 +144,40 @@ add_custom_command(
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/matrix_multiplication
 )
+if (NOT RAJA_ENABLE_CUDA)
+  add_custom_command(
+    OUTPUT mmult_figures
+    COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
+                   -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+                   -o rajaMatrixMultiplication.pdf
+                   -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+    DEPENDS rajaMmult.cali
+  )
+else()
+  add_custom_command(
+    OUTPUT mmult_figures
+    COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmultgpu
+                   -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
+                   -o rajaMatrixMultiplication
+                   -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+    DEPENDS rajaMmult.cali
+  )
+endif()
 
 add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf"
-  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja mmult
-                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
-                 -o ${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf
+  OUTPUT rajafft1d.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./fftTranspose.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/fft
+)
+
+add_custom_command(
+  OUTPUT 1dfft_figures
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft1d.cali
+                 -o rajaFft1D
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
-  DEPENDS rajaMmult.cali
+  DEPENDS rajafft1d.cali
 )
 
 add_custom_command(
@@ -150,16 +188,17 @@ add_custom_command(
 )
 
 add_custom_command(
-  OUTPUT "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  OUTPUT 2dfft_figures
   COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja fft2d
                  -f ${CMAKE_BINARY_DIR}/caliper_files/rajafft2d.cali
-                 -o ${FIGURES_DIRECTORY}/rajafft2d.pdf
+                 -o rajaFft2D
                  -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
   DEPENDS rajafft2d.cali
 )
 
 add_custom_target(figures DEPENDS
-  "${FIGURES_DIRECTORY}/rajaMatrixMultiplication.pdf" 
-  "${FIGURES_DIRECTORY}/rajafft2d.pdf"
+  1dfft_figures
+  2dfft_figures
+  mmult_figures
 )
 

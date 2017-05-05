@@ -3,37 +3,37 @@
 #include <iostream>
 
 #include "RAJA/RAJA.hxx"
+#include "caliper/Annotation.h"
+#include <omp.h>
 
 const double PI = acos(-1);
 
-//This is a sequential implementation of a FFT using RAJA
-std::complex<double>* fftSeq(double* x, int N, int s)
+//This is a sequential implementation of an FFT 
+void fft(std::complex<double>* x, std::complex<double>* bins, int N, int s)
 {
-    std::complex<double>* bin = new std::complex<double>[N];
 
     //Base case if we have a DFT of size 1
     if (N == 1){
-        bin[0] = std::complex<double> (x[0],0);
+        bins[0] = x[0];
 
     } else {
-        //Make a tempory bin for pulling out the arrays from the two halfs
-        std::complex<double>* tempBin = fftSeq(x, N/2, 2*s);
         
-        for (int i = 0; i < N/2; ++i ){
-            bin[i] = tempBin[i];
+        //Determin the fft of the two different halves
+        if (s == 1){
+            //auto forTime = cali::Annotation("largeFor").begin();
+            RAJA::forall<RAJA::seq_exec>(0, 2, [&](int j)
+            {   
+                fft(x+j*s,bins + j*N/2, N/2, 2*s); 
+            });
+            //forTime.end();
+
+        }else{
+            fft(x,bins, N/2, 2*s);
+            fft(x+s,bins + N/2, N/2, 2*s); 
         }
-
-        //make sure to delete the dynamically allocated memory
-        delete tempBin;
-
-        tempBin = fftSeq(x+s, N/2, 2*s);
-
-        for(int i = 0; i < N/2; ++i){
-            bin[N/2 + i] = tempBin[i];
-
-        }
-        //make sure to delete the dynamically allocated memory
-        delete tempBin;
+        
+         
+        
 
         //Make the term I which is a complex double = sqrt -1
         std::complex<double> I = -1.0;
@@ -41,41 +41,50 @@ std::complex<double>* fftSeq(double* x, int N, int s)
         RAJA::forall<RAJA::seq_exec>(0, N/2, [&](int k)
         {   
             std::complex<double> a = (-2*k*PI)/N;
-            std::complex<double> t = bin[k];
-            bin[k] = t + exp(a*I)*bin[k + N/2];
-            bin[k+N/2] = t - exp(a*I)*bin[k + N/2];
+            std::complex<double> t = bins[k];
+            bins[k] = t + exp(a*I)*bins[k + N/2];
+            bins[k+N/2] = t - exp(a*I)*bins[k + N/2];
         });
     }
-
-    return bin;
-
 }
 
+
 int main() {
-    
-    //The number of samples which were collected(must be a power of 2)
-    int numberSamples = pow(2, 8);
+    double start = omp_get_wtime();
+    double duration;
+
+    //The number of samples which were collected(must be a power of 2) and have a nice sqrt
+    int numberSamples = pow(2, 28);
+
     //The rate at which the samples were taken in Hz
     double sampleRate = 40.0;
 
     //make sure this is less than half of sample rate
-    double inputFreq = 10.0;
+    double inputFreq = 10.2;
 
-    //make the input array
-    double sine[numberSamples];
+    //Make input and output arrays
+    std::complex<double>* x = new std::complex<double>[numberSamples];
+    std::complex<double>* bins = new std::complex<double>[numberSamples];
+
+    //Fill in the input array
     for (int i = 0; i < numberSamples; ++i)
     {
-        sine[i] = 20*sin(2*PI * inputFreq * (i / sampleRate));
+        x[i] = std::complex<double> (3.0*sin(2.0*PI * inputFreq * (i / sampleRate)), 0.0);
     }
 
+    //auto totalTime = cali::Annotation("totalFFT").begin();
     //get the bins from the fft
-    std::complex<double>* bins = fftSeq(sine, numberSamples, 1);
+    fft(x, bins, numberSamples, 1);
+    //totalTime.end();
     
     //Print out the results of the fft but adjust the numbers so they correspond 
-    for (int i = 0; i < numberSamples; ++i){
-        std::cout << (sampleRate/numberSamples)*i <<": " << std::abs(bins[i]) << std::endl;
-    }
+    // for (int i = 0; i < numberSamples; ++i){
+    //     std::cout << (sampleRate/numberSamples)*i <<": " << std::abs(bins[i]) << std::endl;
+    // }
+    duration = omp_get_wtime() - start;
+    std::cout<<"printf: "<< duration <<'\n';
 
+    delete x;
+    delete bins;
     return 0;
 }
-
