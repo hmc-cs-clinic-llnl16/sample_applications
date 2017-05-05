@@ -24,7 +24,6 @@ set(RAJA_COHERENCE_BLOCK_SIZE 64 CACHE INT "")
 set(RAJA_HOST_CONFIG_LOADED On CACHE Bool "")
 set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
-
 include(ExternalProject)
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/tpl)
 
@@ -37,6 +36,7 @@ else ()
   endif()
   if (NOT RAJA_GIT_REPO)
     set(RAJA_GIT_REPO https://github.com/hmc-cs-clinic-llnl16/RAJA.git )
+
   endif()
   ExternalProject_Add(
       raja
@@ -133,6 +133,7 @@ add_subdirectory(fft)
 add_subdirectory(fft2d)
 add_subdirectory(dependent_index_sets)
 add_subdirectory(dependent_bench)
+add_subdirectory(reducerTests)
 
 set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
@@ -217,3 +218,4 @@ add_custom_target(figures DEPENDS
   mmult_figures
   dependentBench_figures
 )
+

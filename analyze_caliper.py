@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--cali_file', help="The cali file to be analyzed should go here")
     parser.add_argument('parallel_type', choices=['raja', 'agency'], help="Parallelism framework being used.")
-    parser.add_argument('application_type', choices=['fft', 'mmult', 'fft2d', 'mmultgpu', 'dependent_bench'], help="Application benchmark being plotted")
+    parser.add_argument('application_type', choices=['fft', 'mmult', 'fft2d', 'mmultgpu', 'dependent_bench','reducer'], help="Application benchmark being plotted")
     parser.add_argument('-o', '--output_file', help="Name of the output file")
     parser.add_argument('-q', '--cali_query_loc', help="Path to cali query executable")
 
@@ -31,6 +31,8 @@ def main():
         f = plot_raja_mmult
     elif args.parallel_type == 'raja' and args.application_type == 'fft2d':
         f = lambda x, y, z : plot_raja_fft(x, y, z, "2D FFT Performance")
+    elif args.parallel_type == 'raja' and args.application_type == 'reducer':
+        f = plot_raja_reducer
     elif args.parallel_type == 'raja' and args.application_type == 'fft':
         f = lambda x, y, z : plot_raja_fft(x, y, z, "1D FFT Performance")
     elif args.parallel_type == 'raja' and args.application_type == 'mmultgpu':
@@ -305,6 +307,106 @@ def plot_raja_mmultgpu(cali_file, baseFileName, cali_query, title=True, legend=T
         'figs',
         '{}_gpu.pdf'.format(baseFileName))
     plt.savefig(filename)
+
+def plot_raja_reducer(cali_file, filename, cali_query):
+    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'baseline', 'RajaSerial', 'OMP','AgencyParallel','AgencySerial','RawAgency','RawOMP' ,'time.inclusive.duration'])
+    CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
+
+    p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
+    out, err = p.communicate()
+
+    data = {
+        'init': {},
+        'baseline': {},
+        'OMP': {},
+        'RajaSerial': {},
+        'AgencyParallel': {},
+        'AgencySerial': {},
+        'RawAgency' :{},
+        'RawOMP' :{}
+
+    }
+
+    for line in out.split():
+        line = dict(map(lambda x: x.split('='), line.split(',')))
+        loop = None
+        time = None
+        mode = None
+        size = None
+        for key, value in line.iteritems():
+            if key == 'time.inclusive.duration':
+                time = int(value)
+            elif key == 'iteration':
+                loop = int(value)
+            elif key == 'size':
+                size = int(value)
+            else:
+                mode = key
+
+        if mode == 'initialization':
+            data['init'][size] = time
+        elif mode:
+            if size not in data[mode]:
+                data[mode][size] = [None] * 10
+
+            if size is not None and loop is not None:
+                data[mode][size][loop] = time
+
+    OMP = data['OMP']
+    control = data['baseline']
+    Serial = data['RajaSerial']
+    AgencyParallel = data['AgencyParallel']
+    AgencySerial = data['AgencySerial']
+    RawAgency = data['RawAgency']
+    RawOMP = data['RawOMP']
+
+
+    dat = [[size, c, omp, serial, agp, ags, ra, ro] for size in OMP for omp, serial, c, agp, ags, ra, ro in zip(OMP[size], Serial[size], control[size], AgencyParallel[size], AgencySerial[size], RawAgency[size], RawOMP[size])]
+    dataframe = pd.DataFrame(data=dat, columns=['Size', 'baseline', 'OMP', 'RajaSerial', 'AgencyParallel', 'AgencySerial','RawAgency','RawOMP'])
+    d = [[size,
+          dataframe[dataframe['Size'] == size]['OMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
+          dataframe[dataframe['Size'] == size]['RajaSerial'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['RajaSerial']),
+          dataframe[dataframe['Size'] == size]['baseline'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['baseline']),
+          dataframe[dataframe['Size'] == size]['AgencyParallel'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['AgencyParallel']),
+          dataframe[dataframe['Size'] == size]['AgencySerial'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['AgencySerial']),
+          dataframe[dataframe['Size'] == size]['RawAgency'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['RawAgency']),
+          dataframe[dataframe['Size'] == size]['RawOMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['RawOMP'])
+         ] for size in sorted(OMP)]
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'RajaSerialmean', 'RajaSerialsem', 'baselinemean', 'baselinesem','AgencyParallelmean','AgencyParallelsem','AgencySerialmean', 'AgencySerialsem','RawAgencymean', 'RawAgencysem','RawOMPmean', 'RawOMPsem'])
+
+    fig = plt.figure()
+    sizes = sorted(OMP)
+    legendNames = []
+    plt.errorbar(sizes, realDataframe['OMPmean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem'])
+    legendNames.append('OMP RAJA')
+    plt.errorbar(sizes, realDataframe['RawOMPmean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['RawOMPsem'], linestyle='dashed')
+    legendNames.append('Raw OMP')
+    plt.errorbar(sizes, realDataframe['RajaSerialmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['RajaSerialsem'])
+    legendNames.append('Serial RAJA')
+    plt.errorbar(sizes, realDataframe['baselinemean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['baselinesem'], linestyle='dashed')
+    legendNames.append('Control')
+    plt.errorbar(sizes, realDataframe['AgencySerialmean'], color='c', xerr=[0]*len(sizes), yerr=realDataframe['AgencySerialsem'])
+    legendNames.append('Serial Agency RAJA')
+    plt.errorbar(sizes, realDataframe['AgencyParallelmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['AgencyParallelsem'])
+    legendNames.append('Parallel Agency RAJA')
+    plt.errorbar(sizes, realDataframe['RawAgencymean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['RawAgencysem'], linestyle='dashed')
+    legendNames.append('Raw Agency')
+
+    plt.legend(legendNames, loc='best', fontsize=8)
+    plt.xlabel('Reduction Size', fontsize=16)
+    plt.ylabel('Absolute Time', fontsize=16)
+    plt.grid(b=True, which='major', color='k', linestyle='dotted')
+    plt.title('Reducer Time Taken (32 cores)', fontsize=22)
+    plt.yscale('log')
+    plt.savefig(filename)
+
 
 if __name__ == '__main__':
     main()
