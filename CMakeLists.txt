@@ -24,7 +24,6 @@ set(RAJA_COHERENCE_BLOCK_SIZE 64 CACHE INT "")
 set(RAJA_HOST_CONFIG_LOADED On CACHE Bool "")
 set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
-include_directories(/g/g19/nickgonz/newRAJA/RAJA/extra/agency)
 include(ExternalProject)
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/tpl)
 
@@ -139,6 +138,22 @@ set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/caliper_files")
 
 add_custom_command(
+  OUTPUT rajaReduce.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./reducer.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaReduce.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/reducerTests
+)
+
+add_custom_command(
+    OUTPUT reducer_figures
+    COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja reducer
+                   -f ${CMAKE_BINARY_DIR}/caliper_files/rajaReduce.cali
+                   -o rajaReduce.pdf
+                   -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+    DEPENDS rajaReduce.cali
+)
+
+add_custom_command(
   OUTPUT rajaMmult.cali
   COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./mmult.exe
   COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajaMmult.cali
@@ -197,8 +212,9 @@ add_custom_command(
 )
 
 add_custom_target(figures DEPENDS
-  1dfft_figures
-  2dfft_figures
-  mmult_figures
+  #1dfft_figures
+  #2dfft_figures
+  #mmult_figures
+  reducer_figures
 )
 
