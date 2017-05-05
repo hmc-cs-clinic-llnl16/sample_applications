@@ -6,7 +6,7 @@
 #include "RAJA/MemUtils_CPU.hxx"
 #include "caliper/Annotation.h"
 
-const int maxNum =  200000000;
+const int maxNum =  20000000;
 
 double baseline(double* numberArray, int currNum){
 	double sum = 0;
@@ -73,6 +73,18 @@ double rawAgency(double* numberArray, int currNum){
 	return (double) sum;
 }
 
+double rawOMP(double* numberArray, int currNum){
+	double sum = 0;
+	#pragma omp parallel for \
+	shared(numberArray) \
+	reduction(+: sum)
+	for (int i = 0; i < currNum; ++i){
+		sum += numberArray[i];
+	}
+	return sum;
+
+}
+
 void checkResult(double truth, double test, const std::string& name){
 	if(std::fabs(truth - test) > 0.1){
 		std::cout << "Wrong value encountered when reduceing using "  << name << std::endl;
@@ -131,6 +143,9 @@ int main(){
 
 		//Raw Agency Reducer
 		runTimingTest(rawAgency, numberArray, currNum, numTrials, answer, "RawAgency");
+
+		//Raw OMP Reducer
+		runTimingTest(rawOMP, numberArray, currNum, numTrials, answer, "RawOMP");
 	}
 	size.end();
 

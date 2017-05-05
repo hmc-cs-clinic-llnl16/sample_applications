@@ -112,7 +112,7 @@ def plot_raja_mmult(cali_file, filename, cali_query):
 
 
 def plot_raja_reducer(cali_file, filename, cali_query):
-    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'baseline', 'RajaSerial', 'OMP','AgencyParallel','AgencySerial','RawAgency' ,'time.inclusive.duration'])
+    ANNOTATIONS = ':'.join(['iteration', 'loop', 'size', 'initialization', 'baseline', 'RajaSerial', 'OMP','AgencyParallel','AgencySerial','RawAgency','RawOMP' ,'time.inclusive.duration'])
     CALI_QUERY = _get_cali_query(cali_query, ANNOTATIONS, cali_file)
 
     p = subprocess.Popen(CALI_QUERY, stdout=subprocess.PIPE)
@@ -125,7 +125,8 @@ def plot_raja_reducer(cali_file, filename, cali_query):
         'RajaSerial': {},
         'AgencyParallel': {},
         'AgencySerial': {},
-        'RawAgency' :{}
+        'RawAgency' :{},
+        'RawOMP' :{}
 
     }
 
@@ -160,10 +161,11 @@ def plot_raja_reducer(cali_file, filename, cali_query):
     AgencyParallel = data['AgencyParallel']
     AgencySerial = data['AgencySerial']
     RawAgency = data['RawAgency']
+    RawOMP = data['RawOMP']
 
 
-    dat = [[size, c, omp, serial, agp, ags, ra] for size in OMP for omp, serial, c, agp, ags, ra in zip(OMP[size], Serial[size], control[size], AgencyParallel[size], AgencySerial[size], RawAgency[size])]
-    dataframe = pd.DataFrame(data=dat, columns=['Size', 'baseline', 'OMP', 'RajaSerial', 'AgencyParallel', 'AgencySerial','RawAgency'])
+    dat = [[size, c, omp, serial, agp, ags, ra, ro] for size in OMP for omp, serial, c, agp, ags, ra, ro in zip(OMP[size], Serial[size], control[size], AgencyParallel[size], AgencySerial[size], RawAgency[size], RawOMP[size])]
+    dataframe = pd.DataFrame(data=dat, columns=['Size', 'baseline', 'OMP', 'RajaSerial', 'AgencyParallel', 'AgencySerial','RawAgency','RawOMP'])
     d = [[size,
           dataframe[dataframe['Size'] == size]['OMP'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['OMP']),
@@ -176,26 +178,31 @@ def plot_raja_reducer(cali_file, filename, cali_query):
           dataframe[dataframe['Size'] == size]['AgencySerial'].mean(),
           stats.sem(dataframe[dataframe['Size'] == size]['AgencySerial']),
           dataframe[dataframe['Size'] == size]['RawAgency'].mean(),
-          stats.sem(dataframe[dataframe['Size'] == size]['RawAgency'])
+          stats.sem(dataframe[dataframe['Size'] == size]['RawAgency']),
+          dataframe[dataframe['Size'] == size]['RawOMP'].mean(),
+          stats.sem(dataframe[dataframe['Size'] == size]['RawOMP'])
          ] for size in sorted(OMP)]
-    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'RajaSerialmean', 'RajaSerialsem', 'baselinemean', 'baselinesem','AgencyParallelmean','AgencyParallelsem','AgencySerialmean', 'AgencySerialsem','RawAgencymean', 'RawAgencysem'])
+    realDataframe = pd.DataFrame(data=d, columns=['Size', 'OMPmean', 'OMPsem', 'RajaSerialmean', 'RajaSerialsem', 'baselinemean', 'baselinesem','AgencyParallelmean','AgencyParallelsem','AgencySerialmean', 'AgencySerialsem','RawAgencymean', 'RawAgencysem','RawOMPmean', 'RawOMPsem'])
 
     fig = plt.figure()
     sizes = sorted(OMP)
     legendNames = []
-    plt.errorbar(sizes, realDataframe['OMPmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem'])
+    plt.errorbar(sizes, realDataframe['OMPmean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['OMPsem'])
     legendNames.append('OMP RAJA')
-    plt.errorbar(sizes, realDataframe['RajaSerialmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['RajaSerialsem'])
+    plt.errorbar(sizes, realDataframe['RawOMPmean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['RawOMPsem'], linestyle='dashed')
+    legendNames.append('Raw OMP')
+    plt.errorbar(sizes, realDataframe['RajaSerialmean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['RajaSerialsem'])
     legendNames.append('Serial RAJA')
-    plt.errorbar(sizes, realDataframe['baselinemean'], color='g', xerr=[0]*len(sizes), yerr=realDataframe['baselinesem'])
+    plt.errorbar(sizes, realDataframe['baselinemean'], color='r', xerr=[0]*len(sizes), yerr=realDataframe['baselinesem'], linestyle='dashed')
     legendNames.append('Control')
     plt.errorbar(sizes, realDataframe['AgencySerialmean'], color='c', xerr=[0]*len(sizes), yerr=realDataframe['AgencySerialsem'])
     legendNames.append('Serial Agency RAJA')
-    plt.errorbar(sizes, realDataframe['AgencyParallelmean'], color='m', xerr=[0]*len(sizes), yerr=realDataframe['AgencyParallelsem'])
+    plt.errorbar(sizes, realDataframe['AgencyParallelmean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['AgencyParallelsem'])
     legendNames.append('Parallel Agency RAJA')
-    plt.errorbar(sizes, realDataframe['RawAgencymean'], color='k', xerr=[0]*len(sizes), yerr=realDataframe['RawAgencysem'])
+    plt.errorbar(sizes, realDataframe['RawAgencymean'], color='b', xerr=[0]*len(sizes), yerr=realDataframe['RawAgencysem'], linestyle='dashed')
     legendNames.append('Raw Agency')
-    plt.legend(legendNames, loc='best', fontsize=12)
+
+    plt.legend(legendNames, loc='best', fontsize=8)
     plt.xlabel('Reduction Size', fontsize=16)
     plt.ylabel('Absolute Time', fontsize=16)
     plt.grid(b=True, which='major', color='k', linestyle='dotted')
