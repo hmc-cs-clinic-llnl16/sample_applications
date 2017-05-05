@@ -24,7 +24,6 @@ set(RAJA_COHERENCE_BLOCK_SIZE 64 CACHE INT "")
 set(RAJA_HOST_CONFIG_LOADED On CACHE Bool "")
 set(RAJA_NVCC_FLAGS "-O2 -restrict -arch compute_35 -std c++11 --expt-extended-lambda -ccbin ${CMAKE_CXX_COMPILER} -Xcompiler -fopenmp CACHE LIST \\\"\\\"")
 
-include_directories(/g/g19/nickgonz/newRAJA/RAJA/extra/agency)
 include(ExternalProject)
 SET_DIRECTORY_PROPERTIES(PROPERTIES EP_PREFIX ${CMAKE_BINARY_DIR}/tpl)
 
@@ -133,6 +132,7 @@ add_subdirectory(matrix_multiplication)
 add_subdirectory(fft)
 add_subdirectory(fft2d)
 add_subdirectory(dependent_index_sets)
+add_subdirectory(dependent_bench)
 add_subdirectory(reducerTests)
 
 set(FIGURES_DIRECTORY "${CMAKE_SOURCE_DIR}/figs")
@@ -196,9 +196,26 @@ add_custom_command(
   DEPENDS rajafft2d.cali
 )
 
+add_custom_command(
+  OUTPUT dependentBench.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./indexset-bench.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/dependent_bench.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/dependent_bench
+)
+
+add_custom_command(
+  OUTPUT dependentBench_figures
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja dependent_bench
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/dependent_bench.cali
+                 -o dependent_bench
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS dependentBench.cali
+)
+
 add_custom_target(figures DEPENDS
   1dfft_figures
   2dfft_figures
   mmult_figures
+  dependentBench_figures
 )
 
