@@ -196,7 +196,24 @@ add_custom_command(
   DEPENDS rajafft2d.cali
 )
 
+add_custom_command(
+  OUTPUT rajareducer.cali
+  COMMAND CALI_CONFIG_PROFILE=thread-trace CALI_LOG_VERBOSITY=2 ./reducer.exe
+  COMMAND find *.cali | tail -n 1 | xargs -I '{}' mv '{}' ${CMAKE_BINARY_DIR}/caliper_files/rajareducer.cali
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/reducerTests
+)
+
+add_custom_command(
+  OUTPUT reducer_figures
+  COMMAND python "${CMAKE_SOURCE_DIR}/analyze_caliper.py" raja reducer
+                 -f ${CMAKE_BINARY_DIR}/caliper_files/rajareducer.cali
+                 -o rajaReducer
+                 -q ${CMAKE_BINARY_DIR}/tpl/bin/cali-query
+  DEPENDS rajafft2d.cali
+)
+
 add_custom_target(figures DEPENDS
+  reducer_figures
   1dfft_figures
   2dfft_figures
   mmult_figures
